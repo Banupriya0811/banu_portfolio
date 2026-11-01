@@ -388,7 +388,7 @@ function Contact() {
             <div>
               <label htmlFor="message" className="mb-1.5 block text-sm font-medium">Message</label>
               <textarea id="message" name="message" rows={5} maxLength={1000} className={input} />
-              {errors.message && <p className="mt-1 text-xs text-destructive">{errors.message}</p>}
+              {errors["message"] && <p className="mt-1 text-xs text-destructive">{errors["message"]}</p>}
             </div>
             <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-brand px-5 py-3 text-sm font-semibold text-primary-foreground transition-transform hover:scale-[1.02] glow">
               <Send size={16} /> Send Message
