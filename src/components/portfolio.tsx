@@ -345,7 +345,7 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
             )}
           </div>
 
-          {/* Action Buttons: Resume, View Projects, LinkedIn, GitHub, Copy Email */}
+          {/* Action Buttons: Resume, View Projects, LinkedIn, GitHub */}
           <div className="mt-8 flex flex-wrap items-center gap-3">
             {/* Download Resume – Primary blue button */}
             <a
@@ -366,27 +366,31 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
               <FolderGit2 size={16} /> View Projects
             </a>
 
-            {/* LinkedIn – Visible social button */}
+            {/* LinkedIn – Small minimal icon-only button */}
             {profile.linkedin && (
               <a
                 href={profile.linkedin}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card/70 px-4 py-3 text-sm font-medium text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
+                aria-label="LinkedIn"
+                title="LinkedIn Profile"
+                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-border/80 bg-card/70 text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
               >
-                <Linkedin size={16} /> LinkedIn
+                <Linkedin size={18} />
               </a>
             )}
 
-            {/* GitHub – Visible social button */}
+            {/* GitHub – Small minimal icon-only button */}
             {profile.github && (
               <a
                 href={profile.github}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card/70 px-4 py-3 text-sm font-medium text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
+                aria-label="GitHub"
+                title="GitHub Profile"
+                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-border/80 bg-card/70 text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
               >
-                <Github size={16} /> GitHub
+                <Github size={18} />
               </a>
             )}
           </div>
