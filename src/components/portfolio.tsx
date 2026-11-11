@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type FormEvent } from "react";
+import { useEffect, useState, useRef, type ReactNode, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowUp,
@@ -173,49 +173,111 @@ function getSkillIcon(iconName: SkillCategory["iconName"]) {
 }
 
 // ==================== VOICE INTRO HOOK ====================
-function useVoiceIntro(profile: { name: string; role: string; shortBio: string }) {
+function useVoiceIntro(profile: {
+  name: string;
+  role: string;
+  shortBio: string;
+  voiceIntroScript?: string;
+  voiceIntroAudioUrl?: string;
+}) {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const stopVoice = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      setIsSpeaking(false);
     }
+    setIsSpeaking(false);
   };
 
   const playVoice = () => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Text-to-speech is not supported in this browser.");
-      return;
-    }
-
     if (isSpeaking) {
       stopVoice();
       return;
     }
 
+    // 1. If custom audio file is provided (e.g. real recording MP3/WAV)
+    if (profile.voiceIntroAudioUrl) {
+      try {
+        const audio = new Audio(profile.voiceIntroAudioUrl);
+        audioRef.current = audio;
+        audio.onplay = () => setIsSpeaking(true);
+        audio.onended = () => setIsSpeaking(false);
+        audio.onerror = () => {
+          setIsSpeaking(false);
+          toast.error("Could not play custom audio file.");
+        };
+        audio.play();
+        toast.success("Playing audio introduction!");
+        return;
+      } catch (err) {
+        console.warn("Audio playback failed, falling back to speech synthesis:", err);
+      }
+    }
+
+    // 2. Realistic SpeechSynthesis with Natural Human-like Neural Voice
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Audio playback is not supported in this browser.");
+      return;
+    }
+
     window.speechSynthesis.cancel();
 
-    const introText = `Hello! I'm ${profile.name || "Banupriya M"}, a ${profile.role || "Full Stack Developer"}. Welcome to my portfolio! ${profile.shortBio || "I build responsive, scalable web applications using React, Node.js, and Python."} Whether you have an engineering opportunity, a project collaboration, or just want to discuss modern web development, I would love to connect with you. Let's build something extraordinary together!`;
+    // Professional, confident engineering pitch (no generic/cheesy filler)
+    const introText =
+      profile.voiceIntroScript ||
+      `Hi, I'm ${profile.name || "Banupriya"} — a Full Stack Software Engineer. I specialize in building scalable web applications and robust REST APIs using React, Node.js, and Python. With hands-on experience across three engineering internships and production projects, I focus on clean architecture, responsive design, and performant systems. I am currently open to full-time engineering opportunities. Feel free to explore my projects or reach out directly to connect. Thank you!`;
 
     const utterance = new SpeechSynthesisUtterance(introText);
-    utterance.rate = 0.95;
-    utterance.pitch = 1.05;
+    utterance.rate = 0.94; // Calm, clear, professional human cadence
+    utterance.pitch = 1.0; // Natural warm human pitch (not robotic high pitch)
 
     const voices = window.speechSynthesis.getVoices();
+    // Prioritize natural neural voices (Edge / Chrome Natural, Google US/UK, Siri/Samantha)
+    // Avoid legacy robotic Windows Zira / David Desktop voices
     const preferredVoice =
+      voices.find((v) => v.lang.startsWith("en") && v.name.includes("Online (Natural)")) ||
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          v.name.includes("Natural") &&
+          !v.name.includes("Desktop")
+      ) ||
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Google US English") ||
+            v.name.includes("Google UK English Female"))
+      ) ||
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Samantha") ||
+            v.name.includes("Karen") ||
+            v.name.includes("Victoria"))
+      ) ||
+      voices.find(
+        (v) =>
+          (v.lang.includes("en-IN") || v.lang.includes("en_IN")) &&
+          v.name.includes("Natural")
+      ) ||
+      voices.find(
+        (v) =>
+          (v.lang.includes("en-IN") || v.lang.includes("en_IN")) &&
+          !v.name.includes("Desktop")
+      ) ||
       voices.find(
         (v) =>
           v.lang.startsWith("en") &&
           (v.name.includes("Female") ||
-            v.name.includes("Zira") ||
-            v.name.includes("Heera") ||
-            v.name.includes("Neerja") ||
-            v.name.includes("Samantha") ||
-            v.name.includes("Google") ||
-            v.name.includes("Natural"))
+            v.name.includes("Jenny") ||
+            v.name.includes("Aria"))
       ) ||
-      voices.find((v) => v.lang.startsWith("en") && (v.name.includes("India") || v.lang.includes("IN"))) ||
       voices.find((v) => v.lang.startsWith("en")) ||
       voices[0];
 
@@ -228,7 +290,7 @@ function useVoiceIntro(profile: { name: string; role: string; shortBio: string }
     utterance.onerror = () => setIsSpeaking(false);
 
     window.speechSynthesis.speak(utterance);
-    toast.success("Playing Banupriya's voice introduction!");
+    toast.success("Playing Banupriya's audio introduction!");
   };
 
   useEffect(() => {
@@ -239,9 +301,7 @@ function useVoiceIntro(profile: { name: string; role: string; shortBio: string }
       };
     }
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopVoice();
     };
   }, []);
 
@@ -586,8 +646,8 @@ function Hero({
             <div className="relative z-20 mt-4 flex justify-center w-full max-w-[450px]">
               <button
                 onClick={onPlayVoice}
-                className="inline-flex items-center gap-2.5 rounded-full border border-purple-200 bg-white/95 px-5 py-2.5 text-xs font-semibold text-[#7C3AED] shadow-sm backdrop-blur transition-all hover:border-[#7C3AED] hover:bg-purple-50 hover:shadow-md dark:border-purple-900/40 dark:bg-card/95"
-                title="Click to hear Banupriya's introduction in voice"
+                className="inline-flex items-center gap-2.5 rounded-full border border-purple-200/90 bg-white/95 px-5 py-2.5 text-xs font-semibold text-[#7C3AED] shadow-sm backdrop-blur transition-all hover:border-[#7C3AED] hover:bg-purple-50 hover:shadow-md dark:border-purple-900/40 dark:bg-card/95 cursor-pointer"
+                title="Click to play Banupriya's audio overview"
               >
                 {isSpeaking ? (
                   <>
@@ -596,14 +656,14 @@ function Hero({
                       <span className="h-4 w-1 animate-pulse rounded-full bg-[#7C3AED] delay-75" />
                       <span className="h-2 w-1 animate-pulse rounded-full bg-[#7C3AED] delay-150" />
                     </span>
-                    <span>Pause Voice Intro</span>
+                    <span>Playing Intro... (Click to Pause)</span>
                   </>
                 ) : (
                   <>
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#7C3AED] text-white">
                       <Volume2 size={12} />
                     </span>
-                    <span>Listen to My Intro (Voice)</span>
+                    <span>{profile.voiceIntroBtnText || "Quick Audio Intro"}</span>
                   </>
                 )}
               </button>

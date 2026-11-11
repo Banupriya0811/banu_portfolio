@@ -65,6 +65,9 @@ export interface PortfolioData {
     resumeUrl: string;
     logoTitle: string;
     logoSuffix?: string;
+    voiceIntroBtnText?: string;
+    voiceIntroScript?: string;
+    voiceIntroAudioUrl?: string;
   };
   about: {
     leadParagraph: string;
@@ -97,6 +100,10 @@ export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
     resumeUrl: "/Banupriya_Resume.pdf",
     logoTitle: "Banupriya M",
     logoSuffix: "",
+    voiceIntroBtnText: "Quick Audio Intro",
+    voiceIntroScript:
+      "Hi, I'm Banupriya — a Full Stack Software Engineer. I specialize in building scalable web applications and robust REST APIs using React, Node.js, and Python. With hands-on experience across three engineering internships and production projects, I focus on clean architecture, responsive design, and performant systems. I am currently open to full-time engineering opportunities. Feel free to explore my projects or reach out directly to connect. Thank you!",
+    voiceIntroAudioUrl: "",
   },
   about: {
     leadParagraph:

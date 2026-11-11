@@ -550,6 +550,64 @@ function AdminPage() {
                     className={inputStyle}
                   />
                 </div>
+
+                <div className="sm:col-span-2 border-t border-border/60 pt-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 mb-3">
+                    Audio / Voice Intro Settings
+                  </h4>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        Button Label
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Quick Audio Intro"
+                        value={formData.profile.voiceIntroBtnText || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            profile: { ...formData.profile, voiceIntroBtnText: e.target.value },
+                          })
+                        }
+                        className={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        Custom Audio File URL (Optional MP3/WAV)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. /my-voice.mp3 (leave empty for natural speech)"
+                        value={formData.profile.voiceIntroAudioUrl || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            profile: { ...formData.profile, voiceIntroAudioUrl: e.target.value },
+                          })
+                        }
+                        className={inputStyle}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        Voice Introduction Speech Script
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={formData.profile.voiceIntroScript || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            profile: { ...formData.profile, voiceIntroScript: e.target.value },
+                          })
+                        }
+                        className={inputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
