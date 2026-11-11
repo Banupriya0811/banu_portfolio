@@ -21,6 +21,7 @@ import {
   Settings,
   Sparkles,
   ExternalLink,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -56,7 +57,7 @@ function AdminPage() {
   const [passcodeInput, setPasscodeInput] = useState<string>("");
   const [passcodeError, setPasscodeError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
-    "profile" | "about" | "skills" | "projects" | "experience" | "education" | "settings"
+    "profile" | "about" | "skills" | "projects" | "experience" | "education" | "contact" | "settings"
   >("profile");
 
   const [importText, setImportText] = useState("");
@@ -273,6 +274,7 @@ function AdminPage() {
               { id: "projects", label: "Projects", icon: FolderGit2 },
               { id: "experience", label: "Experience", icon: Briefcase },
               { id: "education", label: "Education & Certs", icon: GraduationCap },
+              { id: "contact", label: "Contact & Footer", icon: Mail },
               { id: "settings", label: "Backup & Settings", icon: Settings },
             ].map(({ id, label, icon: Icon }) => (
               <button
@@ -1308,6 +1310,237 @@ function AdminPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== TAB: CONTACT & FOOTER ==================== */}
+        {activeTab === "contact" && (
+          <div className="space-y-6">
+            {/* Contact Section Settings */}
+            <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
+              <div className="flex items-center gap-2 mb-4">
+                <Mail className="text-[#7C3AED]" size={20} />
+                <h2 className="font-display text-lg font-bold">Contact Section Settings</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-6">
+                Customize the titles, description text, and contact channels shown in the "Let's Connect" section.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Section Eyebrow Badge
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="get in touch"
+                    value={formData.contact?.eyebrow || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, eyebrow: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Section Heading / Title
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Let's Connect"
+                    value={formData.contact?.title || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, title: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Section Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Available for full stack and frontend developer opportunities. Feel free to reach out directly."
+                    value={formData.contact?.subtitle || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, subtitle: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Introduction / Form Note Text
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="I am currently open to full-time roles, engineering internships, and technical collaborations. Whether you have questions about my projects or an open role, drop a note below."
+                    value={formData.contact?.formNote || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, formNote: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Contact Email Address (Receives Inquiries)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="kpmbanupriya@gmail.com"
+                    value={formData.contact?.email || formData.profile.email || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, email: e.target.value },
+                        profile: { ...formData.profile, email: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Contact Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+91 81221 23979"
+                    value={formData.contact?.phone || formData.profile.phone || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact: { ...formData.contact, phone: e.target.value },
+                        profile: { ...formData.profile, phone: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Section Settings */}
+            <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="text-[#7C3AED]" size={20} />
+                <h2 className="font-display text-lg font-bold">Footer Settings</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-6">
+                Customize the dark footer branding, bio tagline, social links, and copyright text at the bottom of the page.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Footer Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Banupriya M"
+                    value={formData.footer?.brandText || formData.profile.logoTitle || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        footer: { ...formData.footer, brandText: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Copyright Notice
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="© 2026 Banupriya M - Full Stack Developer - All rights reserved."
+                    value={formData.footer?.copyrightText || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        footer: { ...formData.footer, copyrightText: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Footer Tagline / Bio Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Full Stack Developer building scalable, responsive web applications."
+                    value={formData.footer?.tagline || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        footer: { ...formData.footer, tagline: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Footer GitHub Link
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://github.com/banupriya0811"
+                    value={formData.profile.github || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        profile: { ...formData.profile, github: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                    Footer LinkedIn Link
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://linkedin.com/in/banupriya-m-1337612b9"
+                    value={formData.profile.linkedin || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        profile: { ...formData.profile, linkedin: e.target.value },
+                      })
+                    }
+                    className={inputStyle}
+                  />
+                </div>
               </div>
             </div>
           </div>

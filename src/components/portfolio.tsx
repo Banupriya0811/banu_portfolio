@@ -978,9 +978,14 @@ const contactSchema = z.object({
   message: z.string().trim().min(1, "Please enter a message").max(1000),
 });
 
-function Contact({ profile }: { profile: any }) {
+function Contact({ profile, contact }: { profile: any; contact?: any }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
+
+  const emailVal = contact?.email || profile.email;
+  const phoneVal = contact?.phone || profile.phone;
+  const linkedinVal = profile.linkedin;
+  const githubVal = profile.github;
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -997,7 +1002,7 @@ function Contact({ profile }: { profile: any }) {
     const body = encodeURIComponent(
       `${result.data.message}\n\n— From: ${result.data.name} (${result.data.email})`
     );
-    window.location.href = `mailto:${profile.email}?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${emailVal}?subject=${subject}&body=${body}`;
     setSent(true);
     toast.success("Ready to send! Opening email client.");
   };
@@ -1006,23 +1011,27 @@ function Contact({ profile }: { profile: any }) {
     "w-full rounded-xl border border-input bg-card px-4 py-3 text-sm outline-none transition-all focus:border-[#7C3AED] focus:ring-1 focus:ring-[#7C3AED]";
 
   const contactLinks = [
-    { icon: Mail, label: profile.email, href: `mailto:${profile.email}`, action: "Email" },
-    { icon: Phone, label: profile.phone, href: `tel:${profile.phone.replace(/\s+/g, "")}`, action: "Call" },
-    { icon: Linkedin, label: "LinkedIn Profile", href: profile.linkedin, action: "Connect" },
-    { icon: Github, label: "GitHub Profile", href: profile.github, action: "Follow" },
+    { icon: Mail, label: emailVal, href: `mailto:${emailVal}`, action: "Email" },
+    { icon: Phone, label: phoneVal, href: `tel:${phoneVal.replace(/\s+/g, "")}`, action: "Call" },
+    { icon: Linkedin, label: "LinkedIn Profile", href: linkedinVal, action: "Connect" },
+    { icon: Github, label: "GitHub Profile", href: githubVal, action: "Follow" },
   ];
 
   return (
     <Section
       id="contact"
-      eyebrow="get in touch"
-      title="Let's Connect"
-      subtitle="Available for full stack and frontend developer opportunities. Feel free to reach out directly."
+      eyebrow={contact?.eyebrow || "get in touch"}
+      title={contact?.title || "Let's Connect"}
+      subtitle={
+        contact?.subtitle ||
+        "Available for full stack and frontend developer opportunities. Feel free to reach out directly."
+      }
     >
       <div className="grid gap-8 md:grid-cols-[1fr_1.3fr]">
         <motion.div {...fadeUp} className="space-y-4">
           <p className="text-muted-foreground text-sm leading-relaxed">
-            I am currently open to full-time roles, engineering internships, and technical collaborations. Whether you have questions about my projects or an open role, drop a note below.
+            {contact?.formNote ||
+              "I am currently open to full-time roles, engineering internships, and technical collaborations. Whether you have questions about my projects or an open role, drop a note below."}
           </p>
 
           <div className="space-y-3 pt-2">
@@ -1140,7 +1149,7 @@ function ScrollTop() {
 // ==================== MAIN PORTFOLIO COMPONENT ====================
 export function Portfolio() {
   const { data } = usePortfolioData();
-  const { profile, about, skills, projects, experience, education, certifications } = data;
+  const { profile, about, skills, projects, experience, education, certifications, contact, footer } = data;
   const { isSpeaking, playVoice, stopVoice } = useVoiceIntro(profile);
 
   return (
@@ -1159,7 +1168,7 @@ export function Portfolio() {
         <Experience jobs={experience} />
         <Education education={education} />
         <Certifications certs={certifications} />
-        <Contact profile={profile} />
+        <Contact profile={profile} contact={contact} />
       </main>
 
       {/* Floating Voice Intro Audio Indicator */}
@@ -1198,10 +1207,11 @@ export function Portfolio() {
                 href="#home"
                 className="font-display text-xl font-bold tracking-tight text-white hover:text-purple-400 transition-colors"
               >
-                {profile.logoTitle || profile.name}.
+                {footer?.brandText || profile.logoTitle || profile.name}
               </a>
               <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">
-                {profile.role || "Full Stack Developer"} building scalable, responsive web applications.
+                {footer?.tagline ||
+                  `${profile.role || "Full Stack Developer"} building scalable, responsive web applications.`}
               </p>
             </div>
 
@@ -1270,7 +1280,8 @@ export function Portfolio() {
           <div className="mt-12 border-t border-slate-800/80 pt-8">
             <div className="relative flex items-center justify-center">
               <p className="text-center text-xs text-slate-400">
-                © {new Date().getFullYear()} {profile.name} - {profile.role} - All rights reserved.
+                {footer?.copyrightText ||
+                  `© ${new Date().getFullYear()} ${profile.name} - ${profile.role} - All rights reserved.`}
               </p>
               <Link
                 to="/admin"

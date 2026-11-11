@@ -79,6 +79,17 @@ export interface PortfolioData {
   experience: ExperienceItem[];
   education: EducationItem;
   certifications: CertificationItem[];
+  contact?: {
+    eyebrow?: string;
+    title?: string;
+    subtitle?: string;
+    formNote?: string;
+  };
+  footer?: {
+    brandText?: string;
+    tagline?: string;
+    copyrightText?: string;
+  };
 }
 
 export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
@@ -240,6 +251,17 @@ export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
       detail: "User journey mapping, wireframing, high-fidelity prototyping, design heuristics, and user experience evaluation.",
     },
   ],
+  contact: {
+    eyebrow: "get in touch",
+    title: "Let's Connect",
+    subtitle: "Available for full stack and frontend developer opportunities. Feel free to reach out directly.",
+    formNote: "I am currently open to full-time roles, engineering internships, and technical collaborations. Whether you have questions about my projects or an open role, drop a note below.",
+  },
+  footer: {
+    brandText: "Banupriya M",
+    tagline: "Full Stack Developer building scalable, responsive web applications.",
+    copyrightText: "© 2026 Banupriya M - Full Stack Developer - All rights reserved.",
+  },
 };
 
 const STORAGE_KEYS = [
@@ -287,6 +309,8 @@ export function getStoredPortfolioData(): PortfolioData {
       profile: { ...DEFAULT_PORTFOLIO_DATA.profile, ...(parsed.profile || {}) },
       about: { ...DEFAULT_PORTFOLIO_DATA.about, ...(parsed.about || {}) },
       education: { ...DEFAULT_PORTFOLIO_DATA.education, ...(parsed.education || {}) },
+      contact: { ...DEFAULT_PORTFOLIO_DATA.contact, ...(parsed.contact || {}) },
+      footer: { ...DEFAULT_PORTFOLIO_DATA.footer, ...(parsed.footer || {}) },
     };
   } catch (e) {
     console.error("Failed to load portfolio data from localStorage:", e);
