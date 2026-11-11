@@ -358,10 +358,10 @@ function Nav({ profile }: { profile: any }) {
           : "bg-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between px-4 sm:px-6 md:px-8">
+      <nav className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <a
           href="#home"
-          className="group inline-flex items-center gap-2 sm:gap-3 font-display text-base sm:text-xl md:text-2xl font-bold tracking-tight whitespace-nowrap shrink-0"
+          className="group inline-flex items-center gap-2 sm:gap-2.5 font-display text-base sm:text-lg lg:text-xl font-bold tracking-tight whitespace-nowrap shrink-0"
         >
           {/* Small Round Profile Avatar */}
           <div className="relative h-8 w-8 sm:h-9 sm:w-9 overflow-hidden rounded-full ring-2 ring-[#7C3AED]/30 shadow-sm transition-transform duration-300 group-hover:scale-105 group-hover:ring-[#7C3AED] shrink-0">
@@ -375,19 +375,23 @@ function Nav({ profile }: { profile: any }) {
           <span className="text-[#7C3AED] whitespace-nowrap">{brandName}</span>
         </a>
 
-        <div className="hidden items-center gap-4 xl:gap-6 lg:flex">
-          {NAV_ITEMS.map(([id, label]) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              className="text-xs xl:text-sm font-medium text-slate-600 transition-colors hover:text-[#7C3AED] dark:text-slate-300 dark:hover:text-purple-400 whitespace-nowrap"
-            >
-              {label}
-            </a>
-          ))}
+        {/* Center Nav Links with deliberate padding, flexible centering, and guaranteed margins */}
+        <div className="hidden lg:flex items-center justify-center flex-1 mx-4 xl:mx-8 min-w-0">
+          <div className="flex items-center gap-1 lg:gap-1.5 xl:gap-3 2xl:gap-4 flex-nowrap">
+            {NAV_ITEMS.map(([id, label]) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                className="px-2 py-1.5 xl:px-2.5 xl:py-1.5 rounded-lg text-xs xl:text-sm font-medium text-slate-600 transition-all hover:text-[#7C3AED] hover:bg-purple-500/10 dark:text-slate-300 dark:hover:text-purple-300 whitespace-nowrap"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* Right Action Buttons: uniform height h-9 sm:h-10, pixel-perfect alignment, consistent gap */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           <button
             type="button"
             onClick={() =>
@@ -396,7 +400,7 @@ function Nav({ profile }: { profile: any }) {
                 `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
               )
             }
-            className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-[#7C3AED] px-2.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-xl bg-[#7C3AED] px-3 sm:px-4 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-md hover:shadow-purple-500/35 hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer"
             title="Download Resume (PDF)"
           >
             <Download size={14} className="shrink-0" />
@@ -407,7 +411,7 @@ function Nav({ profile }: { profile: any }) {
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-1.5 sm:p-2 text-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
+            className="inline-flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card text-foreground transition-all hover:border-[#7C3AED]/50 hover:text-[#7C3AED] hover:scale-[1.02] active:scale-[0.98]"
           >
             {dark ? <Sun size={15} /> : <Moon size={15} />}
           </button>
@@ -415,7 +419,7 @@ function Nav({ profile }: { profile: any }) {
           <Link
             to="/admin"
             title="Admin Page — Edit Website"
-            className="hidden sm:inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
+            className="hidden sm:inline-flex h-9 sm:h-10 shrink-0 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 text-xs font-medium text-muted-foreground transition-all hover:border-[#7C3AED]/50 hover:text-[#7C3AED] hover:scale-[1.02] active:scale-[0.98]"
           >
             <Lock size={13} />
             <span>Admin</span>
@@ -424,7 +428,7 @@ function Nav({ profile }: { profile: any }) {
           <button
             onClick={() => setOpen(!open)}
             aria-label="Menu"
-            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-1.5 sm:p-2 text-foreground transition-colors hover:text-[#7C3AED] lg:hidden"
+            className="inline-flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-1.5 text-foreground transition-colors hover:text-[#7C3AED] lg:hidden"
           >
             {open ? <X size={17} /> : <Menu size={17} />}
           </button>
