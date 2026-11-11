@@ -115,18 +115,18 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-24 px-5 py-20 md:px-8">
+    <section id={id} className="scroll-mt-24 px-4 py-14 sm:px-6 sm:py-16 md:px-8 md:py-20">
       <div className="mx-auto max-w-6xl">
-        <motion.div {...fadeUp} className="mb-12">
+        <motion.div {...fadeUp} className="mb-8 sm:mb-12">
           <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-xs font-mono font-medium text-[#7C3AED] dark:text-purple-300 mb-3">
             <span className="h-1.5 w-1.5 rounded-full bg-[#7C3AED] dark:bg-purple-400 animate-pulse" />
             {eyebrow}
           </div>
-          <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-5xl">
+          <h2 className="font-display text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight text-foreground">
             {title}
           </h2>
           {subtitle && (
-            <p className="mt-2 text-base text-muted-foreground max-w-2xl">{subtitle}</p>
+            <p className="mt-2 text-sm sm:text-base text-muted-foreground max-w-2xl">{subtitle}</p>
           )}
         </motion.div>
         {children}
@@ -140,7 +140,7 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
     <motion.div
       {...fadeUp}
       whileHover={{ y: -3 }}
-      className={`rounded-2xl border border-border/80 bg-card p-6 shadow-sm transition-all duration-300 hover:border-purple-500/40 hover:shadow-md hover:shadow-purple-500/5 ${className}`}
+      className={`rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-sm transition-all duration-300 hover:border-purple-500/40 hover:shadow-md hover:shadow-purple-500/5 ${className}`}
     >
       {children}
     </motion.div>
@@ -358,11 +358,20 @@ function Nav({ profile }: { profile: any }) {
           : "bg-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 md:px-8">
+      <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between px-4 sm:px-6 md:px-8">
         <a
           href="#home"
-          className="group inline-flex items-center font-display text-xl sm:text-2xl font-bold tracking-tight whitespace-nowrap shrink-0"
+          className="group inline-flex items-center gap-2 sm:gap-3 font-display text-base sm:text-xl md:text-2xl font-bold tracking-tight whitespace-nowrap shrink-0"
         >
+          {/* Small Round Profile Avatar */}
+          <div className="relative h-8 w-8 sm:h-9 sm:w-9 overflow-hidden rounded-full ring-2 ring-[#7C3AED]/30 shadow-sm transition-transform duration-300 group-hover:scale-105 group-hover:ring-[#7C3AED] shrink-0">
+            <img
+              src={profile?.avatarUrl || "/profile.jpg"}
+              alt={brandName}
+              className="h-full w-full object-cover object-top"
+              loading="eager"
+            />
+          </div>
           <span className="text-[#7C3AED] whitespace-nowrap">{brandName}</span>
         </a>
 
@@ -378,7 +387,7 @@ function Nav({ profile }: { profile: any }) {
           ))}
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             type="button"
             onClick={() =>
@@ -387,19 +396,20 @@ function Nav({ profile }: { profile: any }) {
                 `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
               )
             }
-            className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 sm:gap-2 rounded-xl bg-[#7C3AED] px-2.5 py-1.5 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0 cursor-pointer"
             title="Download Resume (PDF)"
           >
             <Download size={14} className="shrink-0" />
-            <span className="whitespace-nowrap">Download Resume</span>
+            <span className="inline sm:hidden">Resume</span>
+            <span className="hidden sm:inline">Download Resume</span>
           </button>
 
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-2 text-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
+            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-1.5 sm:p-2 text-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
           >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
+            {dark ? <Sun size={15} /> : <Moon size={15} />}
           </button>
 
           <Link
@@ -414,9 +424,9 @@ function Nav({ profile }: { profile: any }) {
           <button
             onClick={() => setOpen(!open)}
             aria-label="Menu"
-            className="shrink-0 rounded-xl border border-border/80 bg-card p-2 text-foreground transition-colors hover:text-[#7C3AED] lg:hidden"
+            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-1.5 sm:p-2 text-foreground transition-colors hover:text-[#7C3AED] lg:hidden"
           >
-            {open ? <X size={18} /> : <Menu size={18} />}
+            {open ? <X size={17} /> : <Menu size={17} />}
           </button>
         </div>
       </nav>
@@ -428,6 +438,21 @@ function Nav({ profile }: { profile: any }) {
           animate={{ opacity: 1, y: 0 }}
           className="border-b border-border bg-background/95 px-5 py-4 backdrop-blur-2xl lg:hidden"
         >
+          {/* Mobile Profile Header */}
+          <div className="flex items-center gap-3 pb-3 mb-2 border-b border-border/60">
+            <div className="h-10 w-10 overflow-hidden rounded-full ring-2 ring-[#7C3AED]/40 shadow-sm shrink-0">
+              <img
+                src={profile?.avatarUrl || "/profile.jpg"}
+                alt={brandName}
+                className="h-full w-full object-cover object-top"
+              />
+            </div>
+            <div>
+              <p className="font-display text-sm font-bold text-[#7C3AED]">{brandName}</p>
+              <p className="text-xs text-muted-foreground">{profile?.role || "Full Stack Developer"}</p>
+            </div>
+          </div>
+
           <div className="flex flex-col space-y-3">
             {NAV_ITEMS.map(([id, label]) => (
               <a
@@ -449,7 +474,7 @@ function Nav({ profile }: { profile: any }) {
                     `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
                   );
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2.5 text-sm font-semibold text-white shadow-md cursor-pointer"
               >
                 <Download size={15} /> Download Resume
               </button>
@@ -500,13 +525,13 @@ function Hero({
   return (
     <section
       id="home"
-      className="relative overflow-hidden px-5 pt-32 pb-20 md:px-8 md:pt-40 bg-[#F8F9FA] dark:bg-[#0B0F17]"
+      className="relative overflow-hidden px-4 pt-28 pb-16 sm:px-6 sm:pt-36 sm:pb-20 md:px-8 md:pt-40 bg-[#F8F9FA] dark:bg-[#0B0F17]"
     >
       {/* Subtle Purple Ambient Lighting */}
-      <div className="pointer-events-none absolute top-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-purple-500/10 blur-[130px]" />
-      <div className="pointer-events-none absolute top-10 left-10 h-72 w-72 rounded-full bg-purple-500/5 blur-[100px]" />
+      <div className="pointer-events-none absolute top-1/4 right-1/4 h-[320px] w-[320px] sm:h-[500px] sm:w-[500px] rounded-full bg-purple-500/10 blur-[90px] sm:blur-[130px]" />
+      <div className="pointer-events-none absolute top-10 left-10 h-44 w-44 sm:h-72 sm:w-72 rounded-full bg-purple-500/5 blur-[70px] sm:blur-[100px]" />
 
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-12">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-8 sm:gap-10 lg:grid-cols-12 lg:gap-12">
         {/* Left Column: Headline, Role, Description, Buttons, Social Icons */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -515,7 +540,7 @@ function Hero({
           className="lg:col-span-7"
         >
           {/* Status Badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3.5 py-1.5 text-xs font-mono font-medium text-[#7C3AED] dark:text-purple-300 shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 sm:px-3.5 sm:py-1.5 text-xs font-mono font-medium text-[#7C3AED] dark:text-purple-300 shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -524,34 +549,34 @@ function Hero({
           </div>
 
           {/* Headline */}
-          <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl lg:text-6xl">
+          <h1 className="mt-4 sm:mt-5 font-display text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white">
             Hi, I'm <span className="text-[#7C3AED]">{profile.name}</span>
           </h1>
 
           {/* Role */}
-          <p className="mt-2.5 font-display text-2xl font-bold text-slate-800 dark:text-slate-100 sm:text-3xl lg:text-4xl">
+          <p className="mt-2 font-display text-xl sm:text-3xl lg:text-4xl font-bold text-slate-800 dark:text-slate-100">
             {profile.role}
           </p>
 
           {/* Description */}
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg">
+          <p className="mt-3.5 sm:mt-4 max-w-xl text-sm sm:text-base md:text-lg leading-relaxed text-slate-600 dark:text-slate-300">
             {profile.shortBio}
           </p>
 
           {/* Compact Achievement Line */}
-          <div className="mt-5 flex flex-wrap items-center gap-3 text-xs font-mono text-slate-500 dark:text-slate-400 sm:text-sm">
+          <div className="mt-4 sm:mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs font-mono text-slate-500 dark:text-slate-400 sm:text-sm">
             {profile.achievementLine ? (
               <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
-                <Award size={15} className="text-[#7C3AED]" /> {profile.achievementLine}
+                <Award size={15} className="text-[#7C3AED] shrink-0" /> {profile.achievementLine}
               </span>
             ) : (
               <>
                 <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
-                  <Award size={15} className="text-[#7C3AED]" /> {achievementFirst}
+                  <Award size={15} className="text-[#7C3AED] shrink-0" /> {achievementFirst}
                 </span>
                 <span className="text-border">•</span>
                 <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
-                  <Briefcase size={15} className="text-[#7C3AED]" /> {achievementSecond}
+                  <Briefcase size={15} className="text-[#7C3AED] shrink-0" /> {achievementSecond}
                 </span>
               </>
             )}
@@ -559,31 +584,31 @@ function Hero({
               <>
                 <span className="text-border">•</span>
                 <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                  <MapPin size={13} className="text-[#7C3AED]" /> {profile.location}
+                  <MapPin size={13} className="text-[#7C3AED] shrink-0" /> {profile.location}
                 </span>
               </>
             )}
           </div>
 
           {/* Action Buttons: See Projects & Get in Touch */}
-          <div className="mt-8 flex flex-wrap items-center gap-4">
+          <div className="mt-6 sm:mt-8 flex flex-wrap items-center gap-3 sm:gap-4">
             <a
               href="#projects"
-              className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-7 py-3.5 text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-lg hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-5 py-3 sm:px-7 sm:py-3.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-lg hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap"
             >
               <FolderGit2 size={16} /> See Projects
             </a>
 
             <a
               href="#contact"
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#7C3AED]/40 bg-purple-50/40 px-7 py-3.5 text-sm font-semibold text-[#7C3AED] transition-all hover:border-[#7C3AED] hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-900/40 whitespace-nowrap"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#7C3AED]/40 bg-purple-50/40 px-5 py-3 sm:px-7 sm:py-3.5 text-xs sm:text-sm font-semibold text-[#7C3AED] transition-all hover:border-[#7C3AED] hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-900/40 whitespace-nowrap"
             >
               <Mail size={16} /> Get in Touch
             </a>
           </div>
 
           {/* Social Icons: Circular purple buttons matching reference image bottom-left */}
-          <div className="mt-8 flex items-center gap-3">
+          <div className="mt-6 sm:mt-8 flex items-center gap-3">
             {profile.linkedin && (
               <a
                 href={profile.linkedin}
@@ -591,9 +616,9 @@ function Hero({
                 rel="noreferrer"
                 aria-label="LinkedIn"
                 title="LinkedIn Profile"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
+                className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
               >
-                <Linkedin size={18} />
+                <Linkedin size={17} />
               </a>
             )}
 
@@ -604,9 +629,9 @@ function Hero({
                 rel="noreferrer"
                 aria-label="GitHub"
                 title="GitHub Profile"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
+                className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
               >
-                <Github size={18} />
+                <Github size={17} />
               </a>
             )}
 
@@ -615,9 +640,9 @@ function Hero({
                 onClick={copyEmail}
                 aria-label="Email"
                 title="Copy Email Address"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
+                className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
               >
-                {copiedEmail ? <Check size={18} /> : <Mail size={18} />}
+                {copiedEmail ? <Check size={17} /> : <Mail size={17} />}
               </button>
             )}
 
@@ -634,27 +659,27 @@ function Hero({
           initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.15 }}
-          className="relative mx-auto flex w-full flex-col items-center justify-center lg:col-span-5 lg:items-end"
+          className="relative mx-auto flex w-full flex-col items-center justify-center lg:col-span-5 lg:items-end mt-4 lg:mt-0"
         >
           {/* Subtle soft purple ambient aura in background */}
-          <div className="pointer-events-none absolute bottom-12 right-1/4 h-80 w-80 rounded-full bg-purple-500/15 blur-[100px]" />
+          <div className="pointer-events-none absolute bottom-12 right-1/4 h-60 w-60 sm:h-80 sm:w-80 rounded-full bg-purple-500/15 blur-[80px] sm:blur-[100px]" />
 
           {/* Seamless image: No box template, no border, no white card */}
-          <div className="relative z-10 flex w-full max-w-[460px] items-end justify-center select-none pointer-events-none">
+          <div className="relative z-10 flex w-full max-w-[320px] sm:max-w-[420px] lg:max-w-[460px] items-end justify-center select-none pointer-events-none">
             <img
               src={profileCutoutImg}
               alt={profile.name}
-              className="h-auto w-full max-h-[520px] object-contain object-bottom drop-shadow-[0_16px_32px_rgba(124,58,237,0.12)] transition-transform duration-500 hover:scale-[1.02] pointer-events-auto"
+              className="h-auto w-full max-h-[360px] sm:max-h-[440px] lg:max-h-[520px] object-contain object-bottom drop-shadow-[0_16px_32px_rgba(124,58,237,0.12)] transition-transform duration-500 hover:scale-[1.02] pointer-events-auto"
               loading="eager"
             />
           </div>
 
           {/* Simple Voice Intro Pill right below image */}
           {onPlayVoice && (
-            <div className="relative z-20 mt-4 flex justify-center w-full max-w-[450px]">
+            <div className="relative z-20 mt-3 sm:mt-4 flex justify-center w-full max-w-[450px]">
               <button
                 onClick={onPlayVoice}
-                className="inline-flex items-center gap-2.5 rounded-full border border-purple-200/90 bg-white/95 px-5 py-2.5 text-xs font-semibold text-[#7C3AED] shadow-sm backdrop-blur transition-all hover:border-[#7C3AED] hover:bg-purple-50 hover:shadow-md dark:border-purple-900/40 dark:bg-card/95 cursor-pointer"
+                className="inline-flex items-center gap-2 sm:gap-2.5 rounded-full border border-purple-200/90 bg-white/95 px-4 py-2 sm:px-5 sm:py-2.5 text-xs font-semibold text-[#7C3AED] shadow-sm backdrop-blur transition-all hover:border-[#7C3AED] hover:bg-purple-50 hover:shadow-md dark:border-purple-900/40 dark:bg-card/95 cursor-pointer"
                 title="Click to play Banupriya's audio overview"
               >
                 {isSpeaking ? (
@@ -873,7 +898,7 @@ function Experience({ jobs }: { jobs: any[] }) {
       title="Work & Internship Experience"
       subtitle="Practical software engineering roles collaborating on features, API architecture, and code stability."
     >
-      <div className="relative space-y-8 border-l-2 border-purple-500/30 pl-8 ml-3 md:ml-4">
+      <div className="relative space-y-8 border-l-2 border-purple-500/30 pl-8 ml-4 sm:ml-6 md:ml-8">
         {jobs.map((j) => (
           <motion.div key={j.id || j.company} {...fadeUp} className="relative">
             <span className="absolute -left-[41px] top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#7C3AED] shadow-sm text-white">
@@ -1177,20 +1202,20 @@ export function Portfolio() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 30 }}
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full border border-purple-400/40 bg-[#7C3AED] px-5 py-2.5 text-white shadow-2xl shadow-purple-900/40 backdrop-blur-md"
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-2.5 sm:gap-3 rounded-full border border-purple-400/40 bg-[#7C3AED] px-3.5 py-2 sm:px-5 sm:py-2.5 text-white shadow-2xl shadow-purple-900/40 backdrop-blur-md max-w-[92vw]"
         >
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <span className="h-3 w-1 animate-bounce rounded-full bg-white" />
             <span className="h-5 w-1 animate-bounce rounded-full bg-white delay-100" />
             <span className="h-2 w-1 animate-bounce rounded-full bg-white delay-200" />
             <span className="h-4 w-1 animate-bounce rounded-full bg-white delay-300" />
           </div>
-          <span className="text-xs font-semibold tracking-wide">
-            Banupriya Introduction Playing...
+          <span className="text-xs font-semibold tracking-wide truncate">
+            Banupriya Intro Playing...
           </span>
           <button
             onClick={stopVoice}
-            className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/40"
+            className="ml-1 sm:ml-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/40"
             title="Stop voice intro"
           >
             <VolumeX size={13} />
