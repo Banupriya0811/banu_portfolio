@@ -26,11 +26,14 @@ import {
   Cpu,
   Layers,
   Lock,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { z } from "zod";
 import { toast } from "sonner";
 import { usePortfolioData, type SkillCategory, type ProjectItem } from "@/lib/portfolio-data";
+import profileCutoutImg from "@/assets/profile-cutout.png";
 
 function Github({ size = 18 }: { size?: number }) {
   return (
@@ -49,9 +52,10 @@ function Linkedin({ size = 18 }: { size?: number }) {
 }
 
 const NAV_ITEMS = [
+  ["home", "Home"],
   ["about", "About"],
+  ["projects", "Portfolio"],
   ["skills", "Skills"],
-  ["projects", "Projects"],
   ["experience", "Experience"],
   ["education", "Education"],
   ["certifications", "Certifications"],
@@ -82,8 +86,8 @@ function Section({
     <section id={id} className="scroll-mt-24 px-5 py-20 md:px-8">
       <div className="mx-auto max-w-6xl">
         <motion.div {...fadeUp} className="mb-12">
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1 text-xs font-mono font-medium text-blue-400 mb-3">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3 py-1 text-xs font-mono font-medium text-[#7C3AED] dark:text-purple-300 mb-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#7C3AED] dark:bg-purple-400 animate-pulse" />
             {eyebrow}
           </div>
           <h2 className="font-display text-3xl font-bold tracking-tight text-foreground md:text-5xl">
@@ -104,7 +108,7 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
     <motion.div
       {...fadeUp}
       whileHover={{ y: -3 }}
-      className={`rounded-2xl border border-border/80 bg-card/80 p-6 backdrop-blur-md shadow-sm transition-all duration-300 hover:border-blue-500/40 hover:shadow-md hover:shadow-blue-500/5 ${className}`}
+      className={`rounded-2xl border border-border/80 bg-card p-6 shadow-sm transition-all duration-300 hover:border-purple-500/40 hover:shadow-md hover:shadow-purple-500/5 ${className}`}
     >
       {children}
     </motion.div>
@@ -113,7 +117,7 @@ function Card({ children, className = "" }: { children: ReactNode; className?: s
 
 function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full border border-border/70 bg-secondary/80 px-3 py-1 font-mono text-xs font-medium text-secondary-foreground transition-colors hover:border-blue-500/40">
+    <span className="rounded-full border border-border/70 bg-secondary px-3 py-1 font-mono text-xs font-medium text-secondary-foreground transition-colors hover:border-purple-500/40">
       {children}
     </span>
   );
@@ -136,10 +140,86 @@ function getSkillIcon(iconName: SkillCategory["iconName"]) {
   }
 }
 
+// ==================== VOICE INTRO HOOK ====================
+function useVoiceIntro(profile: { name: string; role: string; shortBio: string }) {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const stopVoice = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
+  const playVoice = () => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Text-to-speech is not supported in this browser.");
+      return;
+    }
+
+    if (isSpeaking) {
+      stopVoice();
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const introText = `Hello! I'm ${profile.name || "Banupriya M"}, a ${profile.role || "Full Stack Developer"}. Welcome to my portfolio! ${profile.shortBio || "I build responsive, scalable web applications using React, Node.js, and Python."} Whether you have an engineering opportunity, a project collaboration, or just want to discuss modern web development, I would love to connect with you. Let's build something extraordinary together!`;
+
+    const utterance = new SpeechSynthesisUtterance(introText);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice =
+      voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Female") ||
+            v.name.includes("Zira") ||
+            v.name.includes("Heera") ||
+            v.name.includes("Neerja") ||
+            v.name.includes("Samantha") ||
+            v.name.includes("Google") ||
+            v.name.includes("Natural"))
+      ) ||
+      voices.find((v) => v.lang.startsWith("en") && (v.name.includes("India") || v.lang.includes("IN"))) ||
+      voices.find((v) => v.lang.startsWith("en")) ||
+      voices[0];
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+    toast.success("Playing Banupriya's voice introduction!");
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  return { isSpeaking, playVoice, stopVoice };
+}
+
 // ==================== NAV COMPONENT ====================
-function Nav({ logoTitle }: { logoTitle: string }) {
+function Nav({ profile }: { profile: any }) {
   const [open, setOpen] = useState(false);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -148,12 +228,12 @@ function Nav({ logoTitle }: { logoTitle: string }) {
     window.addEventListener("scroll", handleScroll);
 
     const saved = localStorage.getItem("theme");
-    if (saved === "light") {
-      setDark(false);
-      document.documentElement.classList.remove("dark");
-    } else {
+    if (saved === "dark") {
       setDark(true);
       document.documentElement.classList.add("dark");
+    } else {
+      setDark(false);
+      document.documentElement.classList.remove("dark");
     }
 
     return () => window.removeEventListener("scroll", handleScroll);
@@ -166,6 +246,10 @@ function Nav({ logoTitle }: { logoTitle: string }) {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
 
+  const brandName = (profile?.logoTitle || profile?.name || "Banupriya M")
+    .replace(/\.+$/, "")
+    .trim();
+
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
@@ -174,33 +258,44 @@ function Nav({ logoTitle }: { logoTitle: string }) {
           : "bg-transparent"
       }`}
     >
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
-        <a href="#home" className="group flex items-center gap-2 font-display text-lg font-bold">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-500/20 transition-transform group-hover:scale-105">
-            <Code2 size={16} />
-          </div>
-          <span className="tracking-tight text-foreground font-display text-lg font-bold">
-            <span className="text-gradient">{logoTitle || "Banupriya M"}</span>
-          </span>
+      <nav className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 md:px-8">
+        <a
+          href="#home"
+          className="group inline-flex items-center font-display text-xl sm:text-2xl font-bold tracking-tight whitespace-nowrap shrink-0"
+        >
+          <span className="text-[#7C3AED] whitespace-nowrap">{brandName}</span>
         </a>
 
-        <div className="hidden items-center gap-6 lg:flex">
+        <div className="hidden items-center gap-4 xl:gap-6 lg:flex">
           {NAV_ITEMS.map(([id, label]) => (
             <a
               key={id}
               href={`#${id}`}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-blue-400"
+              className="text-xs xl:text-sm font-medium text-slate-600 transition-colors hover:text-[#7C3AED] dark:text-slate-300 dark:hover:text-purple-400 whitespace-nowrap"
             >
               {label}
             </a>
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {profile?.resumeUrl && (
+            <a
+              href={profile.resumeUrl}
+              download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
+              target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0"
+            >
+              <Download size={14} className="shrink-0" />
+              <span className="whitespace-nowrap">Download Resume</span>
+            </a>
+          )}
+
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/80 bg-card/60 p-2 text-foreground transition-all hover:border-blue-500/40 hover:text-blue-400"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card p-2 text-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
           >
             {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
@@ -208,7 +303,7 @@ function Nav({ logoTitle }: { logoTitle: string }) {
           <Link
             to="/admin"
             title="Admin Page — Edit Website"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-blue-500/40 hover:text-blue-400"
+            className="hidden sm:inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-all hover:border-purple-500/40 hover:text-[#7C3AED]"
           >
             <Lock size={13} />
             <span>Admin</span>
@@ -217,7 +312,7 @@ function Nav({ logoTitle }: { logoTitle: string }) {
           <button
             onClick={() => setOpen(!open)}
             aria-label="Menu"
-            className="rounded-xl border border-border/80 bg-card/60 p-2 text-foreground transition-colors hover:text-blue-400 lg:hidden"
+            className="shrink-0 rounded-xl border border-border/80 bg-card p-2 text-foreground transition-colors hover:text-[#7C3AED] lg:hidden"
           >
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
@@ -237,16 +332,28 @@ function Nav({ logoTitle }: { logoTitle: string }) {
                 key={id}
                 href={`#${id}`}
                 onClick={() => setOpen(false)}
-                className="py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-blue-400"
+                className="py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-[#7C3AED]"
               >
                 {label}
               </a>
             ))}
-            <div className="pt-2 border-t border-border">
+            <div className="pt-2 border-t border-border flex flex-col gap-2">
+              {profile?.resumeUrl && (
+                <a
+                  href={profile.resumeUrl}
+                  download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
+                  target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
+                  rel="noreferrer"
+                  onClick={() => setOpen(false)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md"
+                >
+                  <Download size={15} /> Download Resume
+                </a>
+              )}
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
-                className="inline-flex items-center gap-2 text-xs font-medium text-blue-400 py-1"
+                className="inline-flex items-center gap-2 text-xs font-medium text-[#7C3AED] py-1"
               >
                 <Lock size={13} /> Open Admin Page
               </Link>
@@ -259,7 +366,17 @@ function Nav({ logoTitle }: { logoTitle: string }) {
 }
 
 // ==================== HERO SECTION ====================
-function Hero({ profile, education }: { profile: any; education?: any }) {
+function Hero({
+  profile,
+  education,
+  onPlayVoice,
+  isSpeaking,
+}: {
+  profile: any;
+  education?: any;
+  onPlayVoice?: () => void;
+  isSpeaking?: boolean;
+}) {
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const copyEmail = () => {
@@ -280,15 +397,14 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
   return (
     <section
       id="home"
-      className="relative overflow-hidden px-5 pt-28 pb-20 md:px-8 md:pt-36 bg-gradient-to-b from-blue-950/15 via-background to-background"
+      className="relative overflow-hidden px-5 pt-32 pb-20 md:px-8 md:pt-40 bg-[#F8F9FA] dark:bg-[#0B0F17]"
     >
-      {/* Subtle Light-Blue Gradient & Minimal Grid Pattern */}
-      <div className="pointer-events-none absolute inset-0 grid-bg opacity-25" />
-      <div className="pointer-events-none absolute top-0 left-1/2 h-[450px] w-[720px] -translate-x-1/2 rounded-full bg-gradient-to-b from-blue-500/10 via-blue-600/5 to-transparent blur-[120px]" />
-      <div className="pointer-events-none absolute top-1/4 right-0 h-80 w-80 rounded-full bg-blue-500/10 blur-[100px]" />
+      {/* Subtle Purple Ambient Lighting */}
+      <div className="pointer-events-none absolute top-1/4 right-1/4 h-[500px] w-[500px] rounded-full bg-purple-500/10 blur-[130px]" />
+      <div className="pointer-events-none absolute top-10 left-10 h-72 w-72 rounded-full bg-purple-500/5 blur-[100px]" />
 
       <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-12">
-        {/* Left Column: Professional Introduction and CTA buttons (Kept exactly as they are) */}
+        {/* Left Column: Headline, Role, Description, Buttons, Social Icons */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -296,7 +412,7 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
           className="lg:col-span-7"
         >
           {/* Status Badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/25 bg-blue-500/10 px-3.5 py-1.5 text-xs font-mono font-medium text-blue-400 shadow-sm backdrop-blur">
+          <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/10 px-3.5 py-1.5 text-xs font-mono font-medium text-[#7C3AED] dark:text-purple-300 shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -304,69 +420,79 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
             <span>{profile.statusPill || "Available for Opportunities"}</span>
           </div>
 
-          {/* Headline & Role */}
-          <h1 className="mt-5 font-display text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-            Hi, I'm <span className="text-gradient">{profile.name}</span>
+          {/* Headline */}
+          <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-5xl lg:text-6xl">
+            Hi, I'm <span className="text-[#7C3AED]">{profile.name}</span>
           </h1>
 
-          <p className="mt-2.5 font-display text-xl font-semibold text-blue-400 sm:text-2xl">
+          {/* Role */}
+          <p className="mt-2.5 font-display text-2xl font-bold text-slate-800 dark:text-slate-100 sm:text-3xl lg:text-4xl">
             {profile.role}
           </p>
 
           {/* Description */}
-          <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg">
             {profile.shortBio}
           </p>
 
           {/* Compact Achievement Line */}
-          <div className="mt-5 flex flex-wrap items-center gap-3 text-xs font-mono text-muted-foreground sm:text-sm">
+          <div className="mt-5 flex flex-wrap items-center gap-3 text-xs font-mono text-slate-500 dark:text-slate-400 sm:text-sm">
             {profile.achievementLine ? (
-              <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                <Award size={15} className="text-blue-400" /> {profile.achievementLine}
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
+                <Award size={15} className="text-[#7C3AED]" /> {profile.achievementLine}
               </span>
             ) : (
               <>
-                <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                  <Award size={15} className="text-blue-400" /> {achievementFirst}
+                <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
+                  <Award size={15} className="text-[#7C3AED]" /> {achievementFirst}
                 </span>
                 <span className="text-border">•</span>
-                <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                  <Briefcase size={15} className="text-blue-400" /> {achievementSecond}
+                <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
+                  <Briefcase size={15} className="text-[#7C3AED]" /> {achievementSecond}
                 </span>
               </>
             )}
             {profile.location && (
               <>
                 <span className="text-border">•</span>
-                <span className="inline-flex items-center gap-1 text-muted-foreground">
-                  <MapPin size={13} className="text-blue-400" /> {profile.location}
+                <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                  <MapPin size={13} className="text-[#7C3AED]" /> {profile.location}
                 </span>
               </>
             )}
           </div>
 
-          {/* Action Buttons: Resume, View Projects, LinkedIn, GitHub */}
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            {/* Download Resume – Primary blue button */}
-            <a
-              href={profile.resumeUrl}
-              download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
-              target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-500 hover:scale-[1.02]"
-            >
-              <Download size={16} /> Download Resume
-            </a>
+          {/* Action Buttons: Download Resume & See Projects */}
+          <div className="mt-8 flex flex-wrap items-center gap-3.5">
+            {profile?.resumeUrl && (
+              <a
+                href={profile.resumeUrl}
+                download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
+                target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-6 py-3.5 text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-lg hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap"
+              >
+                <Download size={16} /> Download Resume
+              </a>
+            )}
 
-            {/* View Projects – Secondary button */}
             <a
               href="#projects"
-              className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card/70 px-5 py-3 text-sm font-semibold text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#7C3AED]/35 bg-purple-50/40 px-6 py-3.5 text-sm font-semibold text-[#7C3AED] transition-all hover:border-[#7C3AED] hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-900/40 whitespace-nowrap"
             >
-              <FolderGit2 size={16} /> View Projects
+              <FolderGit2 size={16} /> See Projects
             </a>
 
-            {/* LinkedIn – Small minimal icon-only button */}
+            <a
+              href="#contact"
+              className="inline-flex items-center gap-1.5 rounded-xl px-4 py-3.5 text-sm font-medium text-slate-600 transition-colors hover:text-[#7C3AED] dark:text-slate-300 dark:hover:text-purple-400 whitespace-nowrap"
+            >
+              <Mail size={15} /> Get in Touch
+            </a>
+          </div>
+
+          {/* Social Icons: Circular purple buttons matching reference image bottom-left */}
+          <div className="mt-8 flex items-center gap-3">
             {profile.linkedin && (
               <a
                 href={profile.linkedin}
@@ -374,13 +500,12 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
                 rel="noreferrer"
                 aria-label="LinkedIn"
                 title="LinkedIn Profile"
-                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-border/80 bg-card/70 text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
               >
                 <Linkedin size={18} />
               </a>
             )}
 
-            {/* GitHub – Small minimal icon-only button */}
             {profile.github && (
               <a
                 href={profile.github}
@@ -388,52 +513,79 @@ function Hero({ profile, education }: { profile: any; education?: any }) {
                 rel="noreferrer"
                 aria-label="GitHub"
                 title="GitHub Profile"
-                className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-border/80 bg-card/70 text-foreground transition-all hover:border-blue-500/50 hover:text-blue-400 hover:bg-card"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
               >
                 <Github size={18} />
               </a>
             )}
-          </div>
 
-          {/* Copy Email – Minimal text link */}
-          <div className="mt-5 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Have an opening?</span>
-            <button
-              onClick={copyEmail}
-              className="inline-flex items-center gap-1.5 text-xs font-mono font-medium text-blue-400 underline underline-offset-4 transition-colors hover:text-blue-300"
-              title="Copy Email Address"
-            >
-              {copiedEmail ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-              <span>{copiedEmail ? "Copied to clipboard!" : profile.email}</span>
-            </button>
+            {profile.email && (
+              <button
+                onClick={copyEmail}
+                aria-label="Email"
+                title="Copy Email Address"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED] text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:scale-110"
+              >
+                {copiedEmail ? <Check size={18} /> : <Mail size={18} />}
+              </button>
+            )}
+
+            {copiedEmail && (
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                Email copied!
+              </span>
+            )}
           </div>
         </motion.div>
 
-        {/* Right Column: Display ONLY existing profile photo in a large, elegant rounded-rectangle layout */}
+        {/* Right Column: Seamless Cutout Photo WITHOUT any box template */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.7, delay: 0.15 }}
-          className="relative mx-auto flex w-full max-w-sm sm:max-w-md items-center justify-center lg:col-span-5"
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.15 }}
+          className="relative mx-auto flex w-full flex-col items-center justify-center lg:col-span-5 lg:items-end"
         >
-          {/* Soft blue glow backdrop */}
-          <div className="pointer-events-none absolute -inset-3 rounded-3xl bg-blue-500/15 blur-2xl" />
+          {/* Subtle soft purple ambient aura in background */}
+          <div className="pointer-events-none absolute bottom-12 right-1/4 h-80 w-80 rounded-full bg-purple-500/15 blur-[100px]" />
 
-          {/* Elegant rounded-rectangle photo frame */}
-          <div className="relative aspect-[4/4.9] w-full overflow-hidden rounded-3xl border border-blue-500/25 bg-card/60 shadow-2xl shadow-blue-950/40">
+          {/* Seamless image: No box template, no border, no white card */}
+          <div className="relative z-10 flex w-full max-w-[460px] items-end justify-center select-none pointer-events-none">
             <img
-              src={profile.avatarUrl || "/profile.jpg"}
+              src={profileCutoutImg}
               alt={profile.name}
-              className="h-full w-full object-cover object-top"
+              className="h-auto w-full max-h-[520px] object-contain object-bottom drop-shadow-[0_16px_32px_rgba(124,58,237,0.12)] transition-transform duration-500 hover:scale-[1.02] pointer-events-auto"
               loading="eager"
-              onError={(e) => {
-                const img = e.currentTarget;
-                if (!img.src.endsWith("/profile.jpg")) {
-                  img.src = "/profile.jpg";
-                }
-              }}
             />
           </div>
+
+          {/* Simple Voice Intro Pill right below image */}
+          {onPlayVoice && (
+            <div className="relative z-20 mt-4 flex justify-center w-full max-w-[450px]">
+              <button
+                onClick={onPlayVoice}
+                className="inline-flex items-center gap-2.5 rounded-full border border-purple-200 bg-white/95 px-5 py-2.5 text-xs font-semibold text-[#7C3AED] shadow-sm backdrop-blur transition-all hover:border-[#7C3AED] hover:bg-purple-50 hover:shadow-md dark:border-purple-900/40 dark:bg-card/95"
+                title="Click to hear Banupriya's introduction in voice"
+              >
+                {isSpeaking ? (
+                  <>
+                    <span className="flex items-center gap-0.5">
+                      <span className="h-2.5 w-1 animate-pulse rounded-full bg-[#7C3AED]" />
+                      <span className="h-4 w-1 animate-pulse rounded-full bg-[#7C3AED] delay-75" />
+                      <span className="h-2 w-1 animate-pulse rounded-full bg-[#7C3AED] delay-150" />
+                    </span>
+                    <span>Pause Voice Intro</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#7C3AED] text-white">
+                      <Volume2 size={12} />
+                    </span>
+                    <span>Listen to My Intro (Voice)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </motion.div>
       </div>
     </section>
@@ -463,7 +615,7 @@ function About({ about, education }: { about: any; education: any }) {
             <div className="mt-8 grid grid-cols-2 gap-4 border-t border-border/60 pt-6 sm:grid-cols-4">
               {about.highlights.map((h: { label: string; value: string }) => (
                 <div key={h.label}>
-                  <div className="font-display text-2xl font-bold text-blue-400">{h.value}</div>
+                  <div className="font-display text-2xl font-bold text-[#7C3AED] dark:text-purple-400">{h.value}</div>
                   <div className="mt-0.5 text-xs text-muted-foreground">{h.label}</div>
                 </div>
               ))}
@@ -473,7 +625,7 @@ function About({ about, education }: { about: any; education: any }) {
 
         <Card className="flex flex-col justify-between">
           <div>
-            <div className="inline-flex rounded-xl bg-blue-600/10 p-3 text-blue-400 border border-blue-500/20">
+            <div className="inline-flex rounded-xl bg-purple-600/10 p-3 text-[#7C3AED] dark:text-purple-400 border border-purple-500/20">
               <GraduationCap size={22} />
             </div>
             <h3 className="mt-4 font-display text-lg font-semibold">{education.degree}</h3>
@@ -482,7 +634,7 @@ function About({ about, education }: { about: any; education: any }) {
           <div className="mt-6 border-t border-border/60 pt-4">
             <div className="flex items-center justify-between text-sm">
               <span className="font-mono text-xs text-muted-foreground">{education.period}</span>
-              <span className="font-display font-bold text-blue-400">{education.cgpa}</span>
+              <span className="font-display font-bold text-[#7C3AED] dark:text-purple-400">{education.cgpa}</span>
             </div>
           </div>
         </Card>
@@ -505,7 +657,7 @@ function Skills({ skills }: { skills: SkillCategory[] }) {
           const Icon = getSkillIcon(iconName);
           return (
             <Card key={title} className="flex flex-col">
-              <div className="mb-4 inline-flex w-fit rounded-xl bg-blue-600/10 p-3 text-blue-400 border border-blue-500/20">
+              <div className="mb-4 inline-flex w-fit rounded-xl bg-purple-600/10 p-3 text-[#7C3AED] dark:text-purple-400 border border-purple-500/20">
                 <Icon size={20} />
               </div>
               <h3 className="font-display text-lg font-semibold">{title}</h3>
@@ -548,8 +700,8 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
             onClick={() => setFilter(cat)}
             className={`rounded-xl px-4 py-1.5 text-xs font-semibold transition-all ${
               filter === cat
-                ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20"
-                : "border border-border/80 bg-card/60 text-muted-foreground hover:text-foreground"
+                ? "bg-[#7C3AED] text-white shadow-sm shadow-purple-500/20"
+                : "border border-border/80 bg-card text-muted-foreground hover:text-foreground"
             }`}
           >
             {cat}
@@ -571,14 +723,14 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
                 }}
               />
               {p.badge && (
-                <span className="absolute top-3 right-3 rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow">
+                <span className="absolute top-3 right-3 rounded-full bg-[#7C3AED] px-3 py-1 text-xs font-semibold text-white shadow">
                   {p.badge}
                 </span>
               )}
             </div>
 
             <div className="flex flex-1 flex-col p-6">
-              <h3 className="font-display text-lg font-semibold group-hover:text-blue-400 transition-colors">
+              <h3 className="font-display text-lg font-semibold group-hover:text-[#7C3AED] transition-colors">
                 {p.title}
               </h3>
               <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">
@@ -597,7 +749,7 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
                     href={p.github}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-blue-400 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-[#7C3AED] transition-colors"
                   >
                     <Github size={15} /> Source Code
                   </a>
@@ -607,7 +759,7 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
                     href={p.demo}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-blue-400 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-[#7C3AED] transition-colors"
                   >
                     <ExternalLink size={15} /> Live Demo
                   </a>
@@ -630,16 +782,16 @@ function Experience({ jobs }: { jobs: any[] }) {
       title="Work & Internship Experience"
       subtitle="Practical software engineering roles collaborating on features, API architecture, and code stability."
     >
-      <div className="relative space-y-8 border-l-2 border-blue-500/30 pl-8 ml-3 md:ml-4">
+      <div className="relative space-y-8 border-l-2 border-purple-500/30 pl-8 ml-3 md:ml-4">
         {jobs.map((j) => (
           <motion.div key={j.id || j.company} {...fadeUp} className="relative">
-            <span className="absolute -left-[41px] top-2 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 shadow-sm text-white">
+            <span className="absolute -left-[41px] top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#7C3AED] shadow-sm text-white">
               <Briefcase size={10} />
             </span>
-            <div className="rounded-2xl border border-border/80 bg-card/80 p-6 backdrop-blur transition-all duration-300 hover:border-blue-500/40 hover:shadow-md">
+            <div className="rounded-2xl border border-border/80 bg-card p-6 backdrop-blur transition-all duration-300 hover:border-purple-500/40 hover:shadow-md">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="font-display text-lg font-semibold">{j.role}</h3>
-                <span className="rounded-full bg-blue-500/10 px-2.5 py-0.5 font-mono text-xs font-medium text-blue-400">
+                <span className="rounded-full bg-purple-500/10 px-2.5 py-0.5 font-mono text-xs font-medium text-[#7C3AED] dark:text-purple-300">
                   {j.when}
                 </span>
               </div>
@@ -647,7 +799,7 @@ function Experience({ jobs }: { jobs: any[] }) {
               <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                 {j.pts.map((point: string, idx: number) => (
                   <li key={idx} className="flex gap-2.5 leading-relaxed">
-                    <span className="text-blue-400 font-bold">▹</span>
+                    <span className="text-[#7C3AED] font-bold">▹</span>
                     <span>{point}</span>
                   </li>
                 ))}
@@ -670,7 +822,7 @@ function Education({ education }: { education: any }) {
       subtitle="Foundations in Information Technology, Software Engineering, and Computer Science."
     >
       <Card className="flex flex-col gap-6 md:flex-row md:items-center">
-        <div className="inline-flex w-fit rounded-2xl bg-blue-600/10 p-4 text-blue-400 border border-blue-500/20">
+        <div className="inline-flex w-fit rounded-2xl bg-purple-600/10 p-4 text-[#7C3AED] dark:text-purple-400 border border-purple-500/20">
           <GraduationCap size={32} />
         </div>
         <div className="flex-1">
@@ -681,7 +833,7 @@ function Education({ education }: { education: any }) {
           </p>
         </div>
         <div className="text-left md:text-right border-t md:border-t-0 md:border-l border-border/60 pt-4 md:pt-0 md:pl-6">
-          <p className="font-mono text-xs text-blue-400 font-semibold">{education.period}</p>
+          <p className="font-mono text-xs text-[#7C3AED] dark:text-purple-400 font-semibold">{education.period}</p>
           <p className="mt-1 font-display text-2xl font-bold text-gradient">{education.cgpa}</p>
         </div>
       </Card>
@@ -702,11 +854,11 @@ function Certifications({ certs }: { certs: any[] }) {
         {certs.map((c) => (
           <Card key={c.id || c.name} className="flex flex-col justify-between">
             <div>
-              <div className="inline-flex rounded-xl bg-blue-600/10 p-2.5 text-blue-400 border border-blue-500/20">
+              <div className="inline-flex rounded-xl bg-purple-600/10 p-2.5 text-[#7C3AED] dark:text-purple-400 border border-purple-500/20">
                 <Award size={22} />
               </div>
               <h3 className="mt-4 font-display text-base font-bold">{c.name}</h3>
-              <p className="mt-1 font-mono text-xs text-blue-400 font-medium">{c.by}</p>
+              <p className="mt-1 font-mono text-xs text-[#7C3AED] dark:text-purple-400 font-medium">{c.by}</p>
               <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{c.detail}</p>
             </div>
             {c.link && (
@@ -715,7 +867,7 @@ function Certifications({ certs }: { certs: any[] }) {
                   href={c.link}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-blue-400 hover:underline"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#7C3AED] dark:text-purple-400 hover:underline"
                 >
                   View Credential <ExternalLink size={12} />
                 </a>
@@ -760,7 +912,7 @@ function Contact({ profile }: { profile: any }) {
   };
 
   const inputClasses =
-    "w-full rounded-xl border border-input/80 bg-background/70 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500";
+    "w-full rounded-xl border border-input bg-card px-4 py-3 text-sm outline-none transition-all focus:border-[#7C3AED] focus:ring-1 focus:ring-[#7C3AED]";
 
   const contactLinks = [
     { icon: Mail, label: profile.email, href: `mailto:${profile.email}`, action: "Email" },
@@ -789,7 +941,7 @@ function Contact({ profile }: { profile: any }) {
                 href={href}
                 target={href.startsWith("http") ? "_blank" : undefined}
                 rel="noreferrer"
-                className="flex items-center justify-between rounded-xl border border-border/80 bg-card/70 p-4 transition-all hover:border-blue-500/50 hover:text-blue-400"
+                className="flex items-center justify-between rounded-xl border border-border/80 bg-card p-4 transition-all hover:border-purple-500/50 hover:text-[#7C3AED]"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-foreground">
@@ -797,7 +949,7 @@ function Contact({ profile }: { profile: any }) {
                   </div>
                   <span className="text-sm font-medium">{label}</span>
                 </div>
-                <span className="text-xs font-mono text-muted-foreground hover:text-blue-400">
+                <span className="text-xs font-mono text-muted-foreground hover:text-[#7C3AED]">
                   {action} ↗
                 </span>
               </a>
@@ -854,13 +1006,13 @@ function Contact({ profile }: { profile: any }) {
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-500 hover:scale-[1.01]"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-5 py-3 text-sm font-semibold text-white shadow-md shadow-purple-600/20 transition-all hover:bg-[#6D28D9] hover:scale-[1.01]"
             >
               <Send size={16} /> Send Direct Message
             </button>
 
             {sent && (
-              <p className="text-center font-mono text-xs text-blue-400">
+              <p className="text-center font-mono text-xs text-[#7C3AED] dark:text-purple-400">
                 Opening default email composer…
               </p>
             )}
@@ -887,7 +1039,7 @@ function ScrollTop() {
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
       aria-label="Scroll to top"
-      className="fixed right-6 bottom-6 z-40 rounded-full bg-blue-600 p-3 text-white shadow-lg transition-transform hover:scale-110"
+      className="fixed right-6 bottom-6 z-40 rounded-full bg-[#7C3AED] p-3 text-white shadow-lg transition-transform hover:bg-[#6D28D9] hover:scale-110"
     >
       <ArrowUp size={18} />
     </button>
@@ -898,12 +1050,18 @@ function ScrollTop() {
 export function Portfolio() {
   const { data } = usePortfolioData();
   const { profile, about, skills, projects, experience, education, certifications } = data;
+  const { isSpeaking, playVoice, stopVoice } = useVoiceIntro(profile);
 
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-blue-500/20 selection:text-blue-400">
-      <Nav logoTitle={profile.logoTitle || "Banupriya M"} />
+    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-purple-500/20 selection:text-[#7C3AED]">
+      <Nav profile={profile} />
       <main>
-        <Hero profile={profile} education={education} />
+        <Hero
+          profile={profile}
+          education={education}
+          onPlayVoice={playVoice}
+          isSpeaking={isSpeaking}
+        />
         <About about={about} education={education} />
         <Skills skills={skills} />
         <Projects projects={projects} />
@@ -913,28 +1071,124 @@ export function Portfolio() {
         <Contact profile={profile} />
       </main>
 
-      <footer className="border-t border-border/70 bg-card/40 px-5 py-10 text-center text-sm text-muted-foreground backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 md:flex-row">
-          <div className="flex items-center gap-2 font-display font-semibold">
-            <span className="text-gradient">{profile.logoTitle || "Banupriya M"}</span>
+      {/* Floating Voice Intro Audio Indicator */}
+      {isSpeaking && (
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 30 }}
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-full border border-purple-400/40 bg-[#7C3AED] px-5 py-2.5 text-white shadow-2xl shadow-purple-900/40 backdrop-blur-md"
+        >
+          <div className="flex items-center gap-1">
+            <span className="h-3 w-1 animate-bounce rounded-full bg-white" />
+            <span className="h-5 w-1 animate-bounce rounded-full bg-white delay-100" />
+            <span className="h-2 w-1 animate-bounce rounded-full bg-white delay-200" />
+            <span className="h-4 w-1 animate-bounce rounded-full bg-white delay-300" />
+          </div>
+          <span className="text-xs font-semibold tracking-wide">
+            Banupriya Introduction Playing...
+          </span>
+          <button
+            onClick={stopVoice}
+            className="ml-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/40"
+            title="Stop voice intro"
+          >
+            <VolumeX size={13} />
+          </button>
+        </motion.div>
+      )}
+
+      <footer className="bg-[#0B0F17] text-slate-300">
+        <div className="mx-auto max-w-6xl px-6 py-14 md:px-8">
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-3 md:gap-8">
+            {/* Col 1: Brand & Subtitle */}
+            <div>
+              <a
+                href="#home"
+                className="font-display text-xl font-bold tracking-tight text-white hover:text-purple-400 transition-colors"
+              >
+                {profile.logoTitle || profile.name}.
+              </a>
+              <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-400">
+                {profile.role || "Full Stack Developer"} building scalable, responsive web applications.
+              </p>
+            </div>
+
+            {/* Col 2: Quick Links */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                QUICK LINKS
+              </h4>
+              <ul className="mt-4 space-y-2.5 text-sm">
+                <li>
+                  <a href="#about" className="text-slate-300 transition-colors hover:text-white">
+                    About
+                  </a>
+                </li>
+                <li>
+                  <a href="#projects" className="text-slate-300 transition-colors hover:text-white">
+                    Projects
+                  </a>
+                </li>
+                <li>
+                  <a href="#skills" className="text-slate-300 transition-colors hover:text-white">
+                    Skills
+                  </a>
+                </li>
+                <li>
+                  <a href="#contact" className="text-slate-300 transition-colors hover:text-white">
+                    Contact
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Col 3: Connect */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                CONNECT
+              </h4>
+              <div className="mt-4 flex items-center gap-3">
+                {profile.github && (
+                  <a
+                    href={profile.github}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="GitHub Profile"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/90 text-slate-300 transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white"
+                  >
+                    <Github size={18} />
+                  </a>
+                )}
+                {profile.linkedin && (
+                  <a
+                    href={profile.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="LinkedIn Profile"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/90 text-slate-300 transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-white"
+                  >
+                    <Linkedin size={18} />
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} {profile.name} · {profile.role} · All rights reserved.
-          </p>
-
-          <div className="flex items-center gap-4 text-xs">
-            <a href="#home" className="hover:text-blue-400 transition-colors">
-              Back to top ↑
-            </a>
-            <span className="text-border">•</span>
-            <Link
-              to="/admin"
-              className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-blue-400 transition-colors"
-              title="Admin Page — Edit Website"
-            >
-              <Lock size={12} /> Admin Page
-            </Link>
+          {/* Bottom Divider & Copyright */}
+          <div className="mt-12 border-t border-slate-800/80 pt-8">
+            <div className="relative flex items-center justify-center">
+              <p className="text-center text-xs text-slate-400">
+                © {new Date().getFullYear()} {profile.name} - {profile.role} - All rights reserved.
+              </p>
+              <Link
+                to="/admin"
+                className="absolute right-0 opacity-20 hover:opacity-100 transition-opacity text-slate-400"
+                title="Admin Page — Edit Website"
+              >
+                <Lock size={13} />
+              </Link>
+            </div>
           </div>
         </div>
       </footer>
