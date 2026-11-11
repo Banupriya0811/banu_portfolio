@@ -266,8 +266,10 @@ export function getStoredPortfolioData(): PortfolioData {
       }
       if (
         !parsed.profile.resumeUrl ||
-        parsed.profile.resumeUrl.includes("/__l5e/assets-v1") ||
-        parsed.profile.resumeUrl === "#"
+        parsed.profile.resumeUrl.includes("/__l5e") ||
+        parsed.profile.resumeUrl === "#" ||
+        parsed.profile.resumeUrl.includes("Banupriya_resume.pdf") ||
+        !parsed.profile.resumeUrl.toLowerCase().includes(".pdf")
       ) {
         parsed.profile.resumeUrl = "/Banupriya_Resume.pdf";
       }

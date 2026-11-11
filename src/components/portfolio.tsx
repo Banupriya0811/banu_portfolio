@@ -34,6 +34,38 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { usePortfolioData, type SkillCategory, type ProjectItem } from "@/lib/portfolio-data";
 import profileCutoutImg from "@/assets/profile-cutout.png";
+import resumePdfAsset from "@/assets/Banupriya_Resume.pdf";
+
+export async function downloadResumeFile(url?: string, filename = "Banupriya_M_Resume.pdf") {
+  const targetUrl =
+    url && url !== "#" && !url.includes("/__l5e") ? url : resumePdfAsset || "/Banupriya_Resume.pdf";
+
+  try {
+    const res = await fetch(targetUrl);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+    toast.success("Resume downloaded successfully!");
+  } catch (err) {
+    console.warn("Direct blob download failed, falling back to direct anchor:", err);
+    const a = document.createElement("a");
+    a.href = targetUrl;
+    a.download = filename;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
 
 function Github({ size = 18 }: { size?: number }) {
   return (
@@ -54,7 +86,7 @@ function Linkedin({ size = 18 }: { size?: number }) {
 const NAV_ITEMS = [
   ["home", "Home"],
   ["about", "About"],
-  ["projects", "Portfolio"],
+  ["projects", "Projects"],
   ["skills", "Skills"],
   ["experience", "Experience"],
   ["education", "Education"],
@@ -279,16 +311,20 @@ function Nav({ profile }: { profile: any }) {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <a
-            href={profile?.resumeUrl || "/Banupriya_Resume.pdf"}
-            download="Banupriya_M_Resume.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0"
+          <button
+            type="button"
+            onClick={() =>
+              downloadResumeFile(
+                profile?.resumeUrl,
+                `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
+              )
+            }
+            className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0 cursor-pointer"
+            title="Download Resume (PDF)"
           >
             <Download size={14} className="shrink-0" />
             <span className="whitespace-nowrap">Download Resume</span>
-          </a>
+          </button>
 
           <button
             onClick={toggleTheme}
@@ -336,16 +372,19 @@ function Nav({ profile }: { profile: any }) {
               </a>
             ))}
             <div className="pt-2 border-t border-border flex flex-col gap-2">
-              <a
-                href={profile?.resumeUrl || "/Banupriya_Resume.pdf"}
-                download="Banupriya_M_Resume.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setOpen(false)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md"
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  downloadResumeFile(
+                    profile?.resumeUrl,
+                    `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
+                  );
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md cursor-pointer"
               >
                 <Download size={15} /> Download Resume
-              </a>
+              </button>
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
@@ -672,7 +711,7 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
   return (
     <Section
       id="projects"
-      eyebrow="portfolio work"
+      eyebrow="featured projects"
       title="Featured Engineering Projects"
       subtitle="Production-focused web apps, machine learning models, and full-stack solutions."
     >
