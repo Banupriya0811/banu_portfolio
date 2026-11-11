@@ -392,6 +392,7 @@ function Nav({ profile }: { profile: any }) {
 
         {/* Right Action Buttons: uniform height h-9 sm:h-10, pixel-perfect alignment, consistent gap */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Download Resume button - visible on tablet and desktop, hidden on mobile to keep navbar clean */}
           <button
             type="button"
             onClick={() =>
@@ -400,12 +401,11 @@ function Nav({ profile }: { profile: any }) {
                 `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
               )
             }
-            className="inline-flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-xl bg-[#7C3AED] px-3 sm:px-4 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-md hover:shadow-purple-500/35 hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer"
+            className="hidden sm:inline-flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-xl bg-[#7C3AED] px-3 sm:px-4 text-xs font-semibold text-white shadow-sm shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-md hover:shadow-purple-500/35 hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer"
             title="Download Resume (PDF)"
           >
             <Download size={14} className="shrink-0" />
-            <span className="inline sm:hidden">Resume</span>
-            <span className="hidden sm:inline">Download Resume</span>
+            <span>Download Resume</span>
           </button>
 
           <button
@@ -435,40 +435,29 @@ function Nav({ profile }: { profile: any }) {
         </div>
       </nav>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer: clean, no duplicate profile, full-width touch links, download button */}
       {open && (
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="border-b border-border bg-background/95 px-5 py-4 backdrop-blur-2xl lg:hidden"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="border-b border-border bg-background/98 px-5 pt-3 pb-6 shadow-xl backdrop-blur-2xl lg:hidden"
         >
-          {/* Mobile Profile Header */}
-          <div className="flex items-center gap-3 pb-3 mb-2 border-b border-border/60">
-            <div className="h-10 w-10 overflow-hidden rounded-full ring-2 ring-[#7C3AED]/40 shadow-sm shrink-0">
-              <img
-                src={profile?.avatarUrl || "/profile.jpg"}
-                alt={brandName}
-                className="h-full w-full object-cover object-top"
-              />
-            </div>
-            <div>
-              <p className="font-display text-sm font-bold text-[#7C3AED]">{brandName}</p>
-              <p className="text-xs text-muted-foreground">{profile?.role || "Full Stack Developer"}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col space-y-3">
+          <div className="flex flex-col space-y-1">
             {NAV_ITEMS.map(([id, label]) => (
               <a
                 key={id}
                 href={`#${id}`}
                 onClick={() => setOpen(false)}
-                className="py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-[#7C3AED]"
+                className="flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 transition-all hover:bg-purple-500/10 hover:text-[#7C3AED] active:bg-purple-500/15"
               >
-                {label}
+                <span>{label}</span>
+                <span className="text-xs text-muted-foreground/50">→</span>
               </a>
             ))}
-            <div className="pt-2 border-t border-border flex flex-col gap-2">
+
+            <div className="pt-3 mt-2 border-t border-border/70 flex flex-col gap-2.5">
               <button
                 type="button"
                 onClick={() => {
@@ -478,14 +467,15 @@ function Nav({ profile }: { profile: any }) {
                     `${(profile?.name || "Banupriya_M").replace(/\s+/g, "_")}_Resume.pdf`
                   );
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2.5 text-sm font-semibold text-white shadow-md cursor-pointer"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] active:scale-[0.99] cursor-pointer"
               >
-                <Download size={15} /> Download Resume
+                <Download size={16} /> Download Resume
               </button>
+
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
-                className="inline-flex items-center gap-2 text-xs font-medium text-[#7C3AED] py-1"
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border/80 bg-card text-xs font-medium text-muted-foreground transition-all hover:text-[#7C3AED]"
               >
                 <Lock size={13} /> Open Admin Page
               </Link>
