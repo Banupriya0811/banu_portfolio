@@ -279,18 +279,16 @@ function Nav({ profile }: { profile: any }) {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {profile?.resumeUrl && (
-            <a
-              href={profile.resumeUrl}
-              download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
-              target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0"
-            >
-              <Download size={14} className="shrink-0" />
-              <span className="whitespace-nowrap">Download Resume</span>
-            </a>
-          )}
+          <a
+            href={profile?.resumeUrl || "/Banupriya_Resume.pdf"}
+            download="Banupriya_M_Resume.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-3.5 py-2 sm:px-4 sm:py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 transition-all hover:bg-[#6D28D9] hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap shrink-0"
+          >
+            <Download size={14} className="shrink-0" />
+            <span className="whitespace-nowrap">Download Resume</span>
+          </a>
 
           <button
             onClick={toggleTheme}
@@ -338,18 +336,16 @@ function Nav({ profile }: { profile: any }) {
               </a>
             ))}
             <div className="pt-2 border-t border-border flex flex-col gap-2">
-              {profile?.resumeUrl && (
-                <a
-                  href={profile.resumeUrl}
-                  download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
-                  target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
-                  rel="noreferrer"
-                  onClick={() => setOpen(false)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md"
-                >
-                  <Download size={15} /> Download Resume
-                </a>
-              )}
+              <a
+                href={profile?.resumeUrl || "/Banupriya_Resume.pdf"}
+                download="Banupriya_M_Resume.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7C3AED] px-4 py-2 text-sm font-semibold text-white shadow-md"
+              >
+                <Download size={15} /> Download Resume
+              </a>
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
@@ -462,32 +458,20 @@ function Hero({
             )}
           </div>
 
-          {/* Action Buttons: Download Resume & See Projects */}
-          <div className="mt-8 flex flex-wrap items-center gap-3.5">
-            {profile?.resumeUrl && (
-              <a
-                href={profile.resumeUrl}
-                download={`${(profile.name || "Banupriya").replace(/\s+/g, "_")}_Resume.pdf`}
-                target={profile.resumeUrl.startsWith("http") ? "_blank" : undefined}
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-6 py-3.5 text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-lg hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap"
-              >
-                <Download size={16} /> Download Resume
-              </a>
-            )}
-
+          {/* Action Buttons: See Projects & Get in Touch */}
+          <div className="mt-8 flex flex-wrap items-center gap-4">
             <a
               href="#projects"
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#7C3AED]/35 bg-purple-50/40 px-6 py-3.5 text-sm font-semibold text-[#7C3AED] transition-all hover:border-[#7C3AED] hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-900/40 whitespace-nowrap"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-7 py-3.5 text-sm font-semibold text-white shadow-md shadow-purple-500/25 transition-all hover:bg-[#6D28D9] hover:shadow-lg hover:shadow-purple-500/35 hover:scale-[1.02] whitespace-nowrap"
             >
               <FolderGit2 size={16} /> See Projects
             </a>
 
             <a
               href="#contact"
-              className="inline-flex items-center gap-1.5 rounded-xl px-4 py-3.5 text-sm font-medium text-slate-600 transition-colors hover:text-[#7C3AED] dark:text-slate-300 dark:hover:text-purple-400 whitespace-nowrap"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#7C3AED]/40 bg-purple-50/40 px-7 py-3.5 text-sm font-semibold text-[#7C3AED] transition-all hover:border-[#7C3AED] hover:bg-purple-100/60 dark:bg-purple-950/20 dark:hover:bg-purple-900/40 whitespace-nowrap"
             >
-              <Mail size={15} /> Get in Touch
+              <Mail size={16} /> Get in Touch
             </a>
           </div>
 

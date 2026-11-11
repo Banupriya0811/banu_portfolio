@@ -94,7 +94,7 @@ export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
     phone: "+91 81221 23979",
     github: "https://github.com/banupriya0811",
     linkedin: "https://linkedin.com/in/banupriya-m-1337612b9",
-    resumeUrl: resumeAsset?.url || "#",
+    resumeUrl: "/Banupriya_Resume.pdf",
     logoTitle: "Banupriya M",
     logoSuffix: "",
   },
@@ -263,6 +263,13 @@ export function getStoredPortfolioData(): PortfolioData {
       }
       if (parsed.profile.logoSuffix) {
         parsed.profile.logoSuffix = "";
+      }
+      if (
+        !parsed.profile.resumeUrl ||
+        parsed.profile.resumeUrl.includes("/__l5e/assets-v1") ||
+        parsed.profile.resumeUrl === "#"
+      ) {
+        parsed.profile.resumeUrl = "/Banupriya_Resume.pdf";
       }
     }
     return {
