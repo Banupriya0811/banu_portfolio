@@ -229,11 +229,19 @@ function useVoiceIntro(profile: {
     window.speechSynthesis.cancel();
 
     // Professional, confident engineering pitch (no generic/cheesy filler)
-    const introText =
+    const rawIntroText =
       profile.voiceIntroScript ||
-      `Hi, I'm ${profile.name || "Banupriya"} — a Full Stack Software Engineer. I specialize in building scalable web applications and robust REST APIs using React, Node.js, and Python. With hands-on experience across three engineering internships and production projects, I focus on clean architecture, responsive design, and performant systems. I am currently open to full-time engineering opportunities. Feel free to explore my projects or reach out directly to connect. Thank you!`;
+      `Hi, I'm ${profile.name?.replace(/\s+M\.?$/i, "") || "Banupriya"} — a Full Stack Software Engineer. I specialize in building scalable web applications and robust REST APIs using React, Node.js, and Python. With hands-on experience across three engineering internships and production projects, I focus on clean architecture, responsive design, and performant systems. I am currently open to full-time engineering opportunities. Feel free to explore my projects or reach out directly to connect. Thank you!`;
 
-    const utterance = new SpeechSynthesisUtterance(introText);
+    // Phonetic pronunciation tuning:
+    // In English speech synthesizers, "Banupriya" is often mispronounced like /bæn/ ("banning").
+    // Replacing with "Baanupriya" produces the natural Tamil / Indian long "Baanu" (/bɑːnuː/) sound.
+    // Text displayed on the webpage remains "Banupriya M".
+    const spokenText = rawIntroText
+      .replace(/\bBanupriya\s+M\.?\b/gi, "Baanupriya")
+      .replace(/\bBanupriya\b/gi, "Baanupriya");
+
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.rate = 0.94; // Calm, clear, professional human cadence
     utterance.pitch = 1.0; // Natural warm human pitch (not robotic high pitch)
 
