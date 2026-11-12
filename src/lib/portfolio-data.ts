@@ -13,6 +13,7 @@ import {
   getCloudSyncStatusFn,
   getRemotePortfolioDataFn,
   saveRemotePortfolioDataFn,
+  type CloudBackend,
   type CloudSyncStatus,
   type SaveRemoteResult,
 } from "./portfolio-server";
@@ -35,46 +36,10 @@ const STORAGE_KEYS = [
   "banupriya_portfolio_data",
 ];
 
-const GITHUB_SYNC_CONFIG_KEY = "banupriya_admin_github_sync";
+// Clean up any legacy client-side GitHub token key if previously saved
+const LEGACY_GITHUB_SYNC_KEY = "banupriya_admin_github_sync";
 
-export interface GitHubSyncConfig {
-  token: string;
-  repo: string;
-  branch: string;
-}
-
-export function getSavedGitHubSyncConfig(): GitHubSyncConfig {
-  const fallback: GitHubSyncConfig = {
-    token: "",
-    repo: "Banupriya0811/banu_portfolio",
-    branch: "main",
-  };
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(GITHUB_SYNC_CONFIG_KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as Partial<GitHubSyncConfig>;
-    return {
-      token: parsed.token || "",
-      repo: parsed.repo || fallback.repo,
-      branch: parsed.branch || fallback.branch,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-export function saveGitHubSyncConfig(config: GitHubSyncConfig): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(GITHUB_SYNC_CONFIG_KEY, JSON.stringify(config));
-}
-
-export function clearGitHubSyncConfig(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(GITHUB_SYNC_CONFIG_KEY);
-}
-
-function readRawLocalStorage(): PortfolioData | null {
+export function readExistingLocalPortfolioData(): PortfolioData | null {
   if (typeof window === "undefined") return null;
   try {
     for (const key of STORAGE_KEYS) {
@@ -91,7 +56,7 @@ function readRawLocalStorage(): PortfolioData | null {
 }
 
 export function getStoredPortfolioData(): PortfolioData {
-  return readRawLocalStorage() || DEFAULT_PORTFOLIO_DATA;
+  return readExistingLocalPortfolioData() || DEFAULT_PORTFOLIO_DATA;
 }
 
 export function saveStoredPortfolioData(data: PortfolioData): void {
@@ -129,35 +94,29 @@ async function fetchStaticPortfolioJson(): Promise<PortfolioData | null> {
   }
 }
 
-function pickNewestData(
-  candidates: Array<PortfolioData | null | undefined>,
-): PortfolioData {
-  let winner: PortfolioData | null = null;
-  for (const item of candidates) {
-    if (!item) continue;
-    if (!winner) {
-      winner = item;
-      continue;
-    }
-    if ((item.updatedAt || 0) > (winner.updatedAt || 0)) {
-      winner = item;
-    }
-  }
-  return winner || DEFAULT_PORTFOLIO_DATA;
+function stripTimestampsForCompare(data: PortfolioData): string {
+  const { updatedAt: _u, ...rest } = data;
+  return JSON.stringify(rest);
 }
 
 export function usePortfolioData(initialData?: PortfolioData | null) {
   const [data, setData] = useState<PortfolioData>(
     initialData ? normalizePortfolioData(initialData) : DEFAULT_PORTFOLIO_DATA,
   );
+  const [dataSource, setDataSource] = useState<CloudBackend>(
+    initialData ? "supabase" : "none",
+  );
   const [isLoaded, setIsLoaded] = useState(Boolean(initialData));
   const [isPublishing, setIsPublishing] = useState(false);
+  const [lastPublishedAt, setLastPublishedAt] = useState<number | null>(
+    initialData?.updatedAt || null,
+  );
+  const [localMigrationCandidate, setLocalMigrationCandidate] =
+    useState<PortfolioData | null>(null);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus & { checked: boolean }>({
-    backend: "none",
-    hasServerKv: false,
-    hasServerGithub: false,
-    repo: "Banupriya0811/banu_portfolio",
-    branch: "main",
+    backend: initialData ? "supabase" : "none",
+    supabaseConfigured: Boolean(initialData),
+    hasPublishedRow: Boolean(initialData),
     checked: false,
   });
 
@@ -165,44 +124,77 @@ export function usePortfolioData(initialData?: PortfolioData | null) {
     try {
       const status = await getCloudSyncStatusFn();
       setCloudStatus({ ...status, checked: true });
+      return status;
     } catch {
       setCloudStatus((prev) => ({ ...prev, checked: true }));
+      return null;
     }
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshPortfolio = useCallback(async () => {
+    const localSnapshot = readExistingLocalPortfolioData();
+    const [remoteRes, staticJson, status] = await Promise.all([
+      getRemotePortfolioDataFn().catch(() => ({ data: null, source: "none" as const })),
+      fetchStaticPortfolioJson(),
+      refreshCloudStatus(),
+    ]);
 
-    // 1. Immediate fast hydrate from localStorage if available
-    const localData = readRawLocalStorage();
-    if (localData) {
-      setData((current) => pickNewestData([current, localData]));
+    if (remoteRes.source === "supabase" && remoteRes.data) {
+      // Supabase is authoritative for published site across all browsers
+      setData(remoteRes.data);
+      setDataSource("supabase");
+      setLastPublishedAt(remoteRes.data.updatedAt || Date.now());
+
+      // Check if this browser has differing localStorage edits ready to migrate
+      if (
+        localSnapshot &&
+        stripTimestampsForCompare(localSnapshot) !==
+          stripTimestampsForCompare(remoteRes.data)
+      ) {
+        setLocalMigrationCandidate(localSnapshot);
+      } else {
+        setLocalMigrationCandidate(null);
+        saveStoredPortfolioData(remoteRes.data);
+      }
+    } else if (remoteRes.source === "supabase-empty") {
+      // Supabase is connected, but no row published yet -> preserve localStorage for 1-click migration!
+      setDataSource("supabase-empty");
+      if (
+        localSnapshot &&
+        stripTimestampsForCompare(localSnapshot) !==
+          stripTimestampsForCompare(DEFAULT_PORTFOLIO_DATA)
+      ) {
+        setLocalMigrationCandidate(localSnapshot);
+        setData(localSnapshot);
+      } else {
+        setLocalMigrationCandidate(localSnapshot);
+        setData(staticJson || DEFAULT_PORTFOLIO_DATA);
+      }
+    } else {
+      // Offline / local fallback
+      setDataSource(remoteRes.source);
+      setData(localSnapshot || remoteRes.data || staticJson || DEFAULT_PORTFOLIO_DATA);
+      if (localSnapshot) {
+        setLocalMigrationCandidate(localSnapshot);
+      }
     }
 
-    // 2. Fetch authoritative cloud / static portfolio data for cross-browser sync
-    (async () => {
-      const [remoteRes, staticJson] = await Promise.all([
-        getRemotePortfolioDataFn().catch(() => ({ data: null, source: "none" as const })),
-        fetchStaticPortfolioJson(),
-      ]);
+    if (status) {
+      setCloudStatus({ ...status, checked: true });
+    }
+    setIsLoaded(true);
+  }, [refreshCloudStatus]);
 
-      if (cancelled) return;
-
-      const remoteBest = pickNewestData([remoteRes.data, staticJson]);
-      const latestLocal = readRawLocalStorage();
-
-      // If remote has newer published timestamp (or user has no local edits yet), adopt remote
-      const best =
-        latestLocal && (latestLocal.updatedAt || 0) > (remoteBest.updatedAt || 0)
-          ? latestLocal
-          : remoteBest;
-
-      setData(best);
-      if ((best.updatedAt || 0) > 0 && best === remoteBest) {
-        saveStoredPortfolioData(best);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(LEGACY_GITHUB_SYNC_KEY);
+      } catch {
+        // Ignore storage restrictions
       }
-      setIsLoaded(true);
-    })();
+    }
+
+    refreshPortfolio();
 
     const handleUpdate = () => {
       setData(getStoredPortfolioData());
@@ -212,11 +204,10 @@ export function usePortfolioData(initialData?: PortfolioData | null) {
     window.addEventListener("storage", handleUpdate);
 
     return () => {
-      cancelled = true;
       window.removeEventListener("portfolio_data_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
-  }, []);
+  }, [refreshPortfolio]);
 
   const updateData = (updater: (prev: PortfolioData) => PortfolioData) => {
     setData((current) => {
@@ -227,50 +218,39 @@ export function usePortfolioData(initialData?: PortfolioData | null) {
     });
   };
 
-  const publishData = async (
-    nextData: PortfolioData,
-    options?: {
-      passcode?: string | undefined;
-      githubToken?: string | undefined;
-      githubRepo?: string | undefined;
-      githubBranch?: string | undefined;
-    },
-  ): Promise<SaveRemoteResult> => {
+  const publishData = async (nextData: PortfolioData): Promise<SaveRemoteResult> => {
     setIsPublishing(true);
     const localTimestamped: PortfolioData = {
       ...normalizePortfolioData(nextData),
       updatedAt: Date.now(),
     };
     saveStoredPortfolioData(localTimestamped);
-    setData(localTimestamped);
 
     try {
-      const savedGh = getSavedGitHubSyncConfig();
       const result = await saveRemotePortfolioDataFn({
         data: {
           data: localTimestamped,
-          passcode: options?.passcode || "admin123",
-          githubToken: options?.githubToken ?? savedGh.token,
-          githubRepo: options?.githubRepo ?? savedGh.repo,
-          githubBranch: options?.githubBranch ?? savedGh.branch,
         },
       });
 
       if (result.ok && result.data) {
         saveStoredPortfolioData(result.data);
         setData(result.data);
+        setDataSource("supabase");
+        setLastPublishedAt(result.data.updatedAt || Date.now());
+        setLocalMigrationCandidate(null);
       }
       await refreshCloudStatus();
       return result;
     } catch (err) {
       return {
         ok: false,
-        backend: "none",
-        data: localTimestamped,
+        backend: cloudStatus.backend,
+        reason: "SUPABASE_ERROR",
         message:
           err instanceof Error
-            ? `Saved locally, but cloud sync failed: ${err.message}`
-            : "Saved locally, but cloud sync request failed.",
+            ? `Failed to publish to Supabase: ${err.message}`
+            : "Failed to publish changes to Supabase.",
       };
     } finally {
       setIsPublishing(false);
@@ -310,10 +290,15 @@ export function usePortfolioData(initialData?: PortfolioData | null) {
 
   return {
     data,
+    dataSource,
     updateData,
     publishData,
     isPublishing,
+    lastPublishedAt,
     cloudStatus,
+    localMigrationCandidate,
+    clearLocalMigrationCandidate: () => setLocalMigrationCandidate(null),
+    refreshPortfolio,
     refreshCloudStatus,
     resetData,
     exportJson,

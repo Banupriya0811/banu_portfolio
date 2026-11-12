@@ -25,14 +25,15 @@ import {
   Cloud,
   CloudOff,
   Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   usePortfolioData,
   saveStoredPortfolioData,
-  getSavedGitHubSyncConfig,
-  saveGitHubSyncConfig,
-  clearGitHubSyncConfig,
+  readExistingLocalPortfolioData,
   DEFAULT_PORTFOLIO_DATA,
   type PortfolioData,
   type ProjectItem,
@@ -42,8 +43,10 @@ import {
 } from "@/lib/portfolio-data";
 import {
   getRemotePortfolioDataFn,
-  verifyAdminPasscodeFn,
-  updateRemotePasscodeFn,
+  getAdminSessionFn,
+  adminLoginFn,
+  adminLogoutFn,
+  updateAdminPasswordFn,
 } from "@/lib/portfolio-server";
 
 export const Route = createFileRoute("/admin")({
@@ -64,17 +67,16 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-const PASSCODE_STORAGE_KEY = "banupriya_admin_passcode";
-const AUTH_SESSION_KEY = "banupriya_admin_auth";
-const AUTH_PASSCODE_SESSION_KEY = "banupriya_admin_session_passcode";
-
 function AdminPage() {
   const { initialData } = Route.useLoaderData();
   const {
     data,
     publishData,
     isPublishing,
+    lastPublishedAt,
     cloudStatus,
+    localMigrationCandidate,
+    clearLocalMigrationCandidate,
     refreshCloudStatus,
     resetData,
     exportJson,
@@ -85,94 +87,105 @@ function AdminPage() {
   // Local editable draft state
   const [formData, setRawFormData] = useState<PortfolioData>(data);
   const [hasUnsavedDraft, setHasUnsavedDraft] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [passcodeInput, setPasscodeInput] = useState<string>("");
-  const [passcodeError, setPasscodeError] = useState<string>("");
+  const [adminEmail, setAdminEmail] = useState<string>("");
+  const [loginEmail, setLoginEmail] = useState<string>("");
+  const [loginPassword, setLoginPassword] = useState<string>("");
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<
     "profile" | "about" | "skills" | "projects" | "experience" | "education" | "contact" | "settings"
   >("profile");
 
   const [importText, setImportText] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
-  const [newPasscode, setNewPasscode] = useState("");
-  const [githubTokenInput, setGithubTokenInput] = useState("");
-  const [githubRepoInput, setGithubRepoInput] = useState("Banupriya0811/banu_portfolio");
-  const [githubBranchInput, setGithubBranchInput] = useState("main");
+  const [newPassword, setNewPassword] = useState("");
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [publishFeedback, setPublishFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const setFormData: React.Dispatch<React.SetStateAction<PortfolioData>> = (updater) => {
     setHasUnsavedDraft(true);
+    setPublishFeedback(null);
     setRawFormData(updater);
   };
 
-  // Sync draft when remote/initial data arrives (unless user already started editing)
+  // Sync draft when Supabase/initial data arrives (unless user already started editing)
   useEffect(() => {
     if (isLoaded && !hasUnsavedDraft) {
       setRawFormData(data);
     }
   }, [isLoaded, data, hasUnsavedDraft]);
 
-  // Auto-save draft locally while typing so edits aren't lost on accidental refresh
+  // Auto-save draft locally while typing so edits aren't lost before clicking Save & Publish Live
   useEffect(() => {
     if (isLoaded && isAuthenticated && hasUnsavedDraft) {
       saveStoredPortfolioData({ ...formData, updatedAt: Date.now() });
     }
   }, [formData, isLoaded, isAuthenticated, hasUnsavedDraft]);
 
-  // Check auth session & saved GitHub sync settings
+  // Verify HttpOnly cookie Supabase session on mount
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const auth = sessionStorage.getItem(AUTH_SESSION_KEY);
-      if (auth === "true") {
-        setIsAuthenticated(true);
+    let active = true;
+    (async () => {
+      try {
+        const session = await getAdminSessionFn();
+        if (!active) return;
+        setIsAuthenticated(session.authenticated);
+        if (session.email) {
+          setAdminEmail(session.email);
+        }
+      } catch {
+        if (active) setIsAuthenticated(false);
+      } finally {
+        if (active) setCheckingAuth(false);
+        refreshCloudStatus();
       }
-      const gh = getSavedGitHubSyncConfig();
-      setGithubTokenInput(gh.token);
-      setGithubRepoInput(gh.repo);
-      setGithubBranchInput(gh.branch);
-      refreshCloudStatus();
-    }
+    })();
+    return () => {
+      active = false;
+    };
   }, [refreshCloudStatus]);
-
-  const getStoredPasscode = () => {
-    if (typeof window === "undefined") return "admin123";
-    return localStorage.getItem(PASSCODE_STORAGE_KEY) || "admin123";
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const entered = passcodeInput.trim();
-    const localCorrect = getStoredPasscode();
-
+    setLoginLoading(true);
+    setLoginError("");
     try {
-      const serverCheck = await verifyAdminPasscodeFn({ data: { passcode: entered } });
-      const isValid = serverCheck.serverManaged ? serverCheck.valid : entered === localCorrect || serverCheck.valid;
-      if (isValid) {
+      const res = await adminLoginFn({
+        data: { email: loginEmail.trim(), password: loginPassword },
+      });
+      if (res.ok) {
         setIsAuthenticated(true);
-        sessionStorage.setItem(AUTH_SESSION_KEY, "true");
-        sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, entered);
-        setPasscodeError("");
-        toast.success("Welcome to Portfolio Admin Studio!");
-        return;
+        setAdminEmail(res.email || loginEmail.trim());
+        setLoginPassword("");
+        setLoginError("");
+        toast.success(res.message);
+      } else {
+        setLoginError(res.message);
+        toast.error(res.message);
       }
-    } catch {
-      if (entered === localCorrect) {
-        setIsAuthenticated(true);
-        sessionStorage.setItem(AUTH_SESSION_KEY, "true");
-        sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, entered);
-        setPasscodeError("");
-        toast.success("Welcome to Portfolio Admin Studio!");
-        return;
-      }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Authentication request failed. Please try again.";
+      setLoginError(msg);
+      toast.error(msg);
+    } finally {
+      setLoginLoading(false);
     }
-
-    setPasscodeError("Incorrect passcode. Default is admin123");
-    toast.error("Incorrect passcode.");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await adminLogoutFn();
+    } catch {
+      // Clear UI state regardless
+    }
     setIsAuthenticated(false);
-    sessionStorage.removeItem(AUTH_SESSION_KEY);
-    sessionStorage.removeItem(AUTH_PASSCODE_SESSION_KEY);
+    setAdminEmail("");
     toast.info("Logged out of Admin Studio.");
   };
 
@@ -180,86 +193,66 @@ function AdminPage() {
     saveStoredPortfolioData({ ...formData, updatedAt: Date.now() });
   };
 
-  const handleSaveAll = async () => {
-    const activePasscode =
-      (typeof window !== "undefined" && sessionStorage.getItem(AUTH_PASSCODE_SESSION_KEY)) ||
-      getStoredPasscode();
-
-    const result = await publishData(formData, {
-      passcode: activePasscode,
-      githubToken: githubTokenInput.trim() || undefined,
-      githubRepo: githubRepoInput.trim() || undefined,
-      githubBranch: githubBranchInput.trim() || undefined,
-    });
+  const handlePublishData = async (payload: PortfolioData) => {
+    setPublishFeedback(null);
+    const result = await publishData(payload);
 
     if (result.ok) {
       setHasUnsavedDraft(false);
+      setPublishFeedback({ type: "success", message: result.message });
       toast.success(result.message);
-    } else if (result.reason === "NO_CLOUD_BACKEND") {
-      toast.warning(result.message, {
-        duration: 6000,
-        action: {
-          label: "Setup Sync",
-          onClick: () => setActiveTab("settings"),
-        },
-      });
     } else {
+      if (result.reason === "UNAUTHORIZED") {
+        setIsAuthenticated(false);
+      }
+      setPublishFeedback({ type: "error", message: result.message });
       toast.error(result.message);
     }
   };
 
-  const handleSaveGitHubSync = async () => {
-    saveGitHubSyncConfig({
-      token: githubTokenInput.trim(),
-      repo: githubRepoInput.trim() || "Banupriya0811/banu_portfolio",
-      branch: githubBranchInput.trim() || "main",
-    });
-    toast.success("GitHub Cloud Sync config saved! Publishing your portfolio now...");
-    await handleSaveAll();
+  const handleSaveAll = async () => {
+    await handlePublishData(formData);
   };
 
-  const handleClearGitHubSync = () => {
-    clearGitHubSyncConfig();
-    setGithubTokenInput("");
-    toast.info("Removed browser GitHub sync token.");
+  const handleMigrateLocalToSupabase = async () => {
+    const candidate = localMigrationCandidate || readExistingLocalPortfolioData();
+    if (!candidate) {
+      toast.info("No local browser backup found to migrate.");
+      return;
+    }
+    setRawFormData(candidate);
+    await handlePublishData(candidate);
   };
 
   const handleReset = () => {
     if (window.confirm("Are you sure you want to reset all portfolio data to defaults?")) {
       resetData();
-      setFormData(DEFAULT_PORTFOLIO_DATA);
+      setRawFormData(DEFAULT_PORTFOLIO_DATA);
       setHasUnsavedDraft(true);
-      toast.info("Portfolio data reset to defaults. Click Save & Publish Live to sync globally.");
+      toast.info("Portfolio data reset to defaults. Click Save & Publish Live to update Supabase.");
     }
   };
 
-  const handleSavePasscode = async () => {
-    if (!newPasscode.trim() || newPasscode.length < 4) {
-      toast.error("Passcode must be at least 4 characters long.");
+  const handleSavePassword = async () => {
+    if (!newPassword.trim() || newPassword.trim().length < 8) {
+      toast.error("Password must be at least 8 characters long.");
       return;
     }
-    const nextPass = newPasscode.trim();
-    const currentPass =
-      (typeof window !== "undefined" && sessionStorage.getItem(AUTH_PASSCODE_SESSION_KEY)) ||
-      getStoredPasscode();
-
+    setUpdatingPassword(true);
     try {
-      const res = await updateRemotePasscodeFn({
-        data: { currentPasscode: currentPass, newPasscode: nextPass },
+      const res = await updateAdminPasswordFn({
+        data: { newPassword: newPassword.trim() },
       });
       if (!res.ok) {
         toast.error(res.message);
         return;
       }
-      localStorage.setItem(PASSCODE_STORAGE_KEY, nextPass);
-      sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, nextPass);
       toast.success(res.message);
-      setNewPasscode("");
-    } catch {
-      localStorage.setItem(PASSCODE_STORAGE_KEY, nextPass);
-      sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, nextPass);
-      toast.success("Admin passcode updated in this browser!");
-      setNewPasscode("");
+      setNewPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update password.");
+    } finally {
+      setUpdatingPassword(false);
     }
   };
 
@@ -268,20 +261,27 @@ function AdminPage() {
     if (success) {
       setShowImportModal(false);
       setImportText("");
-      setHasUnsavedDraft(false);
-      toast.success("Portfolio data imported! Click Save & Publish Live to sync across all browsers.");
+      setHasUnsavedDraft(true);
+      toast.success("Portfolio JSON imported into draft! Click Save & Publish Live to save to Supabase.");
     } else {
       toast.error("Invalid JSON format. Please verify and try again.");
     }
   };
 
-  const isCloudReady =
-    cloudStatus.backend === "kv" ||
-    cloudStatus.backend === "github" ||
-    cloudStatus.backend === "local" ||
-    Boolean(githubTokenInput.trim());
+  const isSupabaseConfigured = cloudStatus.supabaseConfigured;
 
-  // ==================== LOGIN SCREEN ====================
+  // ==================== LOADING / LOGIN SCREEN ====================
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+        <div className="flex flex-col items-center gap-3 text-sm text-muted-foreground">
+          <Loader2 size={28} className="animate-spin text-primary" />
+          <span>Verifying Admin Session...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
@@ -292,45 +292,85 @@ function AdminPage() {
             </div>
             <h1 className="mt-5 font-display text-2xl font-bold tracking-tight">Admin Studio</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Enter your passcode to edit portfolio content and projects.
+              Sign in with your Supabase Admin account to edit and publish portfolio updates globally.
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="mt-8 space-y-4">
+          {cloudStatus.checked && !isSupabaseConfigured && (
+            <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
+              <strong>Supabase not configured yet:</strong> Add{" "}
+              <code className="rounded bg-muted px-1 py-0.5">SUPABASE_URL</code> and{" "}
+              <code className="rounded bg-muted px-1 py-0.5">SUPABASE_ANON_KEY</code> in your
+              environment variables to enable cloud login &amp; publishing.
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
               <label
-                htmlFor="passcode"
+                htmlFor="admin-email"
                 className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground"
               >
-                Passcode
+                Admin Email
               </label>
               <input
-                id="passcode"
-                type="password"
-                placeholder="Enter admin passcode"
-                value={passcodeInput}
+                id="admin-email"
+                type="email"
+                required
+                placeholder="admin@example.com"
+                value={loginEmail}
                 onChange={(e) => {
-                  setPasscodeInput(e.target.value);
-                  setPasscodeError("");
+                  setLoginEmail(e.target.value);
+                  setLoginError("");
                 }}
-                className="w-full rounded-xl border border-input/80 bg-background/80 px-4 py-3 text-sm font-mono outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+                className="w-full rounded-xl border border-input/80 bg-background/80 px-4 py-3 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
                 autoFocus
               />
-              {passcodeError && (
-                <p className="mt-2 text-xs font-medium text-destructive">{passcodeError}</p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="admin-password"
+                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Password
+              </label>
+              <input
+                id="admin-password"
+                type="password"
+                required
+                placeholder="Enter your Supabase password"
+                value={loginPassword}
+                onChange={(e) => {
+                  setLoginPassword(e.target.value);
+                  setLoginError("");
+                }}
+                className="w-full rounded-xl border border-input/80 bg-background/80 px-4 py-3 text-sm outline-none transition-all focus:border-primary focus:ring-1 focus:ring-primary"
+              />
+              {loginError && (
+                <p className="mt-2 text-xs font-medium text-destructive">{loginError}</p>
               )}
             </div>
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-brand px-5 py-3 text-sm font-semibold text-primary-foreground shadow transition-transform hover:scale-[1.01] glow"
+              disabled={loginLoading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-brand px-5 py-3 text-sm font-semibold text-primary-foreground shadow transition-transform hover:scale-[1.01] disabled:opacity-60 glow cursor-pointer"
             >
-              <Unlock size={16} /> Access Studio
+              {loginLoading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Signing In...
+                </>
+              ) : (
+                <>
+                  <Unlock size={16} /> Sign In to Studio
+                </>
+              )}
             </button>
           </form>
 
           <div className="mt-6 flex items-center justify-between border-t border-border/60 pt-4 text-xs text-muted-foreground">
-            <span className="font-mono">Default passcode: admin123</span>
+            <span className="font-mono">Secured by Supabase Auth &amp; RLS</span>
             <Link to="/" className="text-primary hover:underline">
               ← Back to Site
             </Link>
@@ -361,28 +401,24 @@ function AdminPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display font-bold">Admin Content Studio</span>
-                {isCloudReady ? (
+                {isSupabaseConfigured ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-emerald-600 dark:text-emerald-400">
-                    <Cloud size={11} />
-                    {cloudStatus.backend === "kv"
-                      ? "Cloud DB Sync"
-                      : cloudStatus.backend === "local"
-                        ? "Local File Sync"
-                        : "GitHub Cloud Sync"}
+                    <Database size={11} />
+                    {cloudStatus.hasPublishedRow ? "Supabase Live" : "Supabase Ready"}
                   </span>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setActiveTab("settings")}
                     className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-mono font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-colors cursor-pointer"
-                    title="Click to enable cross-browser cloud sync"
+                    title="Click to check Supabase configuration"
                   >
-                    <CloudOff size={11} /> Browser-Only (Setup Sync)
+                    <CloudOff size={11} /> Supabase Not Configured
                   </button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground hidden sm:block">
-                Edit portfolio profile, projects, skills & experience
+                {adminEmail ? `Signed in as ${adminEmail}` : "Edit portfolio profile, projects, skills & experience"}
               </p>
             </div>
           </div>
@@ -407,14 +443,14 @@ function AdminPage() {
                 </>
               ) : (
                 <>
-                  <Save size={14} /> Save & Publish Live
+                  <Save size={14} /> Save &amp; Publish Live
                 </>
               )}
             </button>
 
             <button
               onClick={handleLogout}
-              className="rounded-xl border border-border/80 bg-card/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-destructive"
+              className="rounded-xl border border-border/80 bg-card/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-destructive cursor-pointer"
               title="Log out"
             >
               Logout
@@ -454,16 +490,96 @@ function AdminPage() {
 
       {/* Main Container */}
       <main className="mx-auto max-w-5xl px-4 pt-8 sm:px-6">
-        {cloudStatus.checked && !isCloudReady && activeTab !== "settings" && (
+        {publishFeedback && (
+          <div
+            className={`mb-6 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-xs ${
+              publishFeedback.type === "success"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {publishFeedback.type === "success" ? (
+                <CheckCircle2 size={16} className="shrink-0" />
+              ) : (
+                <AlertCircle size={16} className="shrink-0" />
+              )}
+              <span className="font-medium">{publishFeedback.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPublishFeedback(null)}
+              className="text-xs opacity-70 hover:opacity-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {localMigrationCandidate && isSupabaseConfigured && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-primary/35 bg-primary/10 px-4 py-3.5 text-xs">
+            <div className="flex items-start gap-2.5">
+              <Cloud size={16} className="mt-0.5 shrink-0 text-primary" />
+              <div>
+                <p className="font-semibold text-foreground">
+                  {cloudStatus.hasPublishedRow
+                    ? "Local browser draft found from earlier edits"
+                    : "Existing localStorage portfolio data ready to migrate to Supabase"}
+                </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  {cloudStatus.hasPublishedRow
+                    ? "Your browser has saved edits that differ from Supabase. Migrate them to Supabase or discard the old local copy."
+                    : "Supabase is currently empty. Migrate your existing browser edits into Supabase so all visitors and browsers see them immediately."}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleMigrateLocalToSupabase}
+                disabled={isPublishing}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              >
+                {isPublishing ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" /> Migrating...
+                  </>
+                ) : (
+                  <>
+                    <Cloud size={13} /> Migrate to Supabase
+                  </>
+                )}
+              </button>
+              {cloudStatus.hasPublishedRow && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearLocalMigrationCandidate();
+                    saveStoredPortfolioData(data);
+                    setRawFormData(data);
+                    setHasUnsavedDraft(false);
+                    toast.info("Synced editor with latest published Supabase data.");
+                  }}
+                  className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  Use Supabase Data
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {cloudStatus.checked && !isSupabaseConfigured && activeTab !== "settings" && (
           <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs">
             <div className="flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
               <CloudOff size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div>
                 <p className="font-semibold">
-                  Changes currently save to this browser only.
+                  Supabase is not configured in server environment variables.
                 </p>
                 <p className="mt-0.5 text-amber-800/80 dark:text-amber-300/80">
-                  Connect Cloud Sync (GitHub token or Vercel KV / Upstash Redis) so other browsers and visitors immediately see your Admin edits.
+                  Add <code className="rounded bg-muted px-1 py-0.5">SUPABASE_URL</code> and{" "}
+                  <code className="rounded bg-muted px-1 py-0.5">SUPABASE_ANON_KEY</code> in Vercel so Admin edits publish live to all browsers.
                 </p>
               </div>
             </div>
@@ -472,7 +588,7 @@ function AdminPage() {
               onClick={() => setActiveTab("settings")}
               className="shrink-0 rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-amber-700 transition-colors cursor-pointer"
             >
-              Setup Cloud Sync →
+              View Setup →
             </button>
           </div>
         )}
@@ -1730,154 +1846,123 @@ function AdminPage() {
         {/* ==================== TAB: SETTINGS & BACKUP ==================== */}
         {activeTab === "settings" && (
           <div className="space-y-6">
-            {/* Cross-Browser Cloud Sync */}
+            {/* Supabase Centralized Database Status */}
             <div className="rounded-2xl border border-primary/30 bg-card/75 p-6 backdrop-blur">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="font-display text-lg font-bold flex items-center gap-2">
-                    <Cloud size={18} className="text-primary" /> Cross-Browser Cloud Sync
+                    <Database size={18} className="text-primary" /> Supabase Cloud Database
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Publish your Admin Studio edits globally so every browser, device, and visitor sees them.
+                    Centralized PostgreSQL storage with Row Level Security (RLS) so updates sync instantly across all browsers and devices.
                   </p>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-mono font-semibold ${
-                    isCloudReady
+                    isSupabaseConfigured
                       ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                       : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                   }`}
                 >
-                  {cloudStatus.backend === "kv"
-                    ? "Active: Vercel KV / Upstash Redis"
-                    : cloudStatus.backend === "github" || Boolean(githubTokenInput.trim())
-                      ? "Active: GitHub Live Sync"
-                      : cloudStatus.backend === "local"
-                        ? "Active: Local File Sync"
-                        : "Not Connected Yet"}
+                  {cloudStatus.hasPublishedRow
+                    ? "Connected & Published"
+                    : isSupabaseConfigured
+                      ? "Connected (Empty Table)"
+                      : "Not Configured"}
                 </span>
               </div>
 
-              {cloudStatus.hasServerKv ? (
-                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-800 dark:text-emerald-200">
-                  Connected via <strong>Upstash Redis / Vercel KV</strong>. Clicking{" "}
-                  <strong>Save &amp; Publish Live</strong> updates all browsers globally in real time.
+              <div className="mt-4 grid gap-3 sm:grid-cols-3 text-xs">
+                <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                  <span className="text-muted-foreground block">Signed-in Admin</span>
+                  <span className="font-mono font-semibold text-foreground mt-0.5 block truncate">
+                    {adminEmail || "Authenticated"}
+                  </span>
                 </div>
-              ) : (
-                <div className="mt-5 space-y-4">
-                  <div className="rounded-xl border border-border/70 bg-background/60 p-4 text-xs text-muted-foreground space-y-1.5">
+                <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                  <span className="text-muted-foreground block">Last Published</span>
+                  <span className="font-mono font-semibold text-foreground mt-0.5 block">
+                    {lastPublishedAt
+                      ? new Date(lastPublishedAt).toLocaleString()
+                      : "Not published yet"}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+                  <span className="text-muted-foreground block">Security Model</span>
+                  <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                    HttpOnly JWT + RLS
+                  </span>
+                </div>
+              </div>
+
+              {localMigrationCandidate && isSupabaseConfigured && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4 text-xs">
+                  <div>
                     <p className="font-semibold text-foreground">
-                      Option 1 (Fastest): Connect GitHub Repo Auto-Publish
+                      Migrate Existing Browser Storage Data
                     </p>
-                    <p>
-                      Create a GitHub Fine-grained Personal Access Token with{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">Contents: Read and write</code>{" "}
-                      permission for <code className="rounded bg-muted px-1 py-0.5">{githubRepoInput}</code> and paste it below (saved only in your admin browser) — or set{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">GITHUB_TOKEN</code> in Vercel Environment Variables.
-                    </p>
-                    <p className="pt-1">
-                      <strong>Option 2 (Instant DB, zero redeploy):</strong> Connect free{" "}
-                      <strong>Upstash Redis</strong> in Vercel Dashboard → Storage, and redeploy once (auto-detected via{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">KV_REST_API_URL</code> /{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">UPSTASH_REDIS_REST_URL</code>).
+                    <p className="text-muted-foreground mt-0.5">
+                      Upload your existing <code className="rounded bg-muted px-1">localStorage</code> portfolio edits directly to Supabase.
                     </p>
                   </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
-                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-                        GitHub Personal Access Token (stored in this browser only)
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="github_pat_... or ghp_..."
-                        value={githubTokenInput}
-                        onChange={(e) => setGithubTokenInput(e.target.value)}
-                        className={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-                        GitHub Repository
-                      </label>
-                      <input
-                        type="text"
-                        value={githubRepoInput}
-                        onChange={(e) => setGithubRepoInput(e.target.value)}
-                        className={inputStyle}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
-                        Branch
-                      </label>
-                      <input
-                        type="text"
-                        value={githubBranchInput}
-                        onChange={(e) => setGithubBranchInput(e.target.value)}
-                        className={inputStyle}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSaveGitHubSync}
-                      disabled={isPublishing || !githubTokenInput.trim()}
-                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-brand px-4 py-2 text-xs font-semibold text-primary-foreground shadow glow disabled:opacity-50 cursor-pointer"
-                    >
-                      {isPublishing ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" /> Publishing...
-                        </>
-                      ) : (
-                        <>
-                          <Cloud size={14} /> Save Token &amp; Publish Portfolio Now
-                        </>
-                      )}
-                    </button>
-                    {githubTokenInput.trim() && (
-                      <button
-                        type="button"
-                        onClick={handleClearGitHubSync}
-                        className="rounded-xl border border-border/80 bg-card px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-destructive"
-                      >
-                        Remove Saved Token
-                      </button>
+                  <button
+                    type="button"
+                    onClick={handleMigrateLocalToSupabase}
+                    disabled={isPublishing}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gradient-brand px-4 py-2 text-xs font-semibold text-primary-foreground shadow glow disabled:opacity-50 cursor-pointer"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" /> Migrating...
+                      </>
+                    ) : (
+                      <>
+                        <Cloud size={14} /> Migrate &amp; Publish to Supabase
+                      </>
                     )}
-                  </div>
+                  </button>
+                </div>
+              )}
+
+              {!isSupabaseConfigured && (
+                <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
+                  <p className="font-semibold">Server Environment Variables Required:</p>
+                  <p>
+                    Add <code className="rounded bg-muted px-1 py-0.5">SUPABASE_URL</code> and{" "}
+                    <code className="rounded bg-muted px-1 py-0.5">SUPABASE_ANON_KEY</code> in Vercel Project Settings → Environment Variables (never prefix secrets with <code className="rounded bg-muted px-1 py-0.5">VITE_</code>), then run <code className="rounded bg-muted px-1 py-0.5">supabase/schema.sql</code> in Supabase SQL Editor.
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Security settings */}
             <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
-              <h2 className="font-display text-lg font-bold">Admin Passcode</h2>
+              <h2 className="font-display text-lg font-bold">Admin Password</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Set a personalized passcode to protect the Admin Studio from unauthorized edits.
+                Update the password for your Supabase Auth admin account ({adminEmail || "authenticated user"}).
               </p>
 
               <div className="mt-4 flex max-w-sm gap-2">
                 <input
                   type="password"
-                  placeholder="New passcode (min 4 chars)"
-                  value={newPasscode}
-                  onChange={(e) => setNewPasscode(e.target.value)}
+                  placeholder="New password (min 8 chars)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   className={inputStyle}
                 />
                 <button
-                  onClick={handleSavePasscode}
-                  className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow"
+                  onClick={handleSavePassword}
+                  disabled={updatingPassword}
+                  className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow disabled:opacity-50 cursor-pointer"
                 >
-                  Update
+                  {updatingPassword ? "Updating..." : "Update"}
                 </button>
               </div>
             </div>
 
             {/* Backup & Data Sync */}
             <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
-              <h2 className="font-display text-lg font-bold">Backup &amp; Sync Tools</h2>
+              <h2 className="font-display text-lg font-bold">Backup &amp; Restore Tools</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Export your current portfolio configuration to a downloadable JSON file, or restore from a backup.
               </p>
@@ -1920,16 +2005,18 @@ function AdminPage() {
         )}
 
         {/* Global Save Action Bar */}
-        <div className="sticky bottom-4 mt-8 flex items-center justify-between rounded-2xl border border-primary/30 bg-card/95 p-4 shadow-xl backdrop-blur-xl">
+        <div className="sticky bottom-4 mt-8 flex items-center justify-between gap-4 rounded-2xl border border-primary/30 bg-card/95 p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles size={16} className="text-primary" />
+            <Sparkles size={16} className="text-primary shrink-0" />
             <span>
-              {isCloudReady
-                ? "Click Save & Publish Live to update all browsers & devices."
-                : "Saves locally now; connect Cloud Sync in Settings to update all browsers."}
+              {hasUnsavedDraft
+                ? "You have unpublished draft changes — click Save & Publish Live to update Supabase."
+                : lastPublishedAt
+                  ? `Live in Supabase (last published ${new Date(lastPublishedAt).toLocaleTimeString()}).`
+                  : "Click Save & Publish Live to publish your portfolio globally via Supabase."}
             </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0">
             <button
               onClick={handleSaveAll}
               disabled={isPublishing}
@@ -1937,7 +2024,7 @@ function AdminPage() {
             >
               {isPublishing ? (
                 <>
-                  <Loader2 size={15} className="animate-spin" /> Publishing...
+                  <Loader2 size={15} className="animate-spin" /> Publishing to Supabase...
                 </>
               ) : (
                 <>

@@ -1,20 +1,32 @@
 import { createServerFn } from "@tanstack/react-start";
+import {
+  getCookie,
+  setCookie,
+  deleteCookie,
+  getRequestProtocol,
+} from "@tanstack/react-start/server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizePortfolioData, type PortfolioData } from "./portfolio-shared";
 
-const DEFAULT_GITHUB_REPO = "Banupriya0811/banu_portfolio";
-const DEFAULT_GITHUB_BRANCH = "main";
-const GITHUB_DATA_PATH = "public/portfolio-data.json";
-const KV_DATA_KEY = "banupriya_portfolio_data";
-const KV_PASSCODE_KEY = "banupriya_admin_passcode";
+const ACCESS_COOKIE = "banu_sb_access";
+const REFRESH_COOKIE = "banu_sb_refresh";
+const PORTFOLIO_TABLE = "portfolio_site";
+const ADMIN_TABLE = "admin_users";
+const PORTFOLIO_ROW_ID = "main";
 
-export type CloudBackend = "kv" | "github" | "local" | "none";
+export type CloudBackend = "supabase" | "supabase-empty" | "local" | "none";
 
 export interface CloudSyncStatus {
   backend: CloudBackend;
-  hasServerKv: boolean;
-  hasServerGithub: boolean;
-  repo: string;
-  branch: string;
+  supabaseConfigured: boolean;
+  hasPublishedRow: boolean;
+}
+
+export interface AdminSessionStatus {
+  authenticated: boolean;
+  email: string | null;
+  supabaseConfigured: boolean;
+  reason?: string;
 }
 
 export interface SaveRemoteResult {
@@ -22,7 +34,31 @@ export interface SaveRemoteResult {
   backend: CloudBackend;
   data?: PortfolioData;
   message: string;
-  reason?: "UNAUTHORIZED" | "NO_CLOUD_BACKEND" | "GITHUB_ERROR" | "KV_ERROR";
+  reason?:
+    | "UNAUTHORIZED"
+    | "SUPABASE_NOT_CONFIGURED"
+    | "RLS_FORBIDDEN"
+    | "SUPABASE_ERROR";
+}
+
+interface SupabaseServerConfig {
+  url: string;
+  anonKey: string;
+  serviceRoleKey: string;
+}
+
+interface PortfolioSiteRow {
+  id: string;
+  profile: unknown;
+  about: unknown;
+  skills: unknown;
+  projects: unknown;
+  experience: unknown;
+  education: unknown;
+  certifications: unknown;
+  contact: unknown;
+  footer: unknown;
+  updated_at?: string;
 }
 
 function getEnv(): Record<string, string | undefined> {
@@ -32,24 +68,27 @@ function getEnv(): Record<string, string | undefined> {
   return {};
 }
 
-function getKvCredentials(env: Record<string, string | undefined>) {
-  const url = (env["KV_REST_API_URL"] || env["UPSTASH_REDIS_REST_URL"] || "").replace(/\/+$/, "");
-  const token = env["KV_REST_API_TOKEN"] || env["UPSTASH_REDIS_REST_TOKEN"] || "";
-  return url && token ? { url, token } : null;
-}
+function getSupabaseServerConfig(): SupabaseServerConfig | null {
+  const env = getEnv();
+  const url = (
+    env["SUPABASE_URL"] ||
+    env["NEXT_PUBLIC_SUPABASE_URL"] ||
+    env["VITE_SUPABASE_URL"] ||
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  const anonKey = (
+    env["SUPABASE_ANON_KEY"] ||
+    env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
+    env["VITE_SUPABASE_ANON_KEY"] ||
+    ""
+  ).trim();
+  // Strictly server-only env var for service role key (never read from VITE_*)
+  const serviceRoleKey = (env["SUPABASE_SERVICE_ROLE_KEY"] || "").trim();
 
-function getGitHubTarget(
-  env: Record<string, string | undefined>,
-  override?: {
-    token?: string | undefined;
-    repo?: string | undefined;
-    branch?: string | undefined;
-  },
-) {
-  const token = (override?.token || env["GITHUB_TOKEN"] || "").trim();
-  const repo = (override?.repo || env["GITHUB_REPO"] || DEFAULT_GITHUB_REPO).trim();
-  const branch = (override?.branch || env["GITHUB_BRANCH"] || DEFAULT_GITHUB_BRANCH).trim();
-  return { token, repo, branch };
+  if (!url || !anonKey) return null;
+  return { url, anonKey, serviceRoleKey };
 }
 
 function isLocalDevServer(env: Record<string, string | undefined>): boolean {
@@ -61,148 +100,171 @@ function isLocalDevServer(env: Record<string, string | undefined>): boolean {
   );
 }
 
-function utf8ToBase64(str: string): string {
-  const bytes = new TextEncoder().encode(str);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const code = bytes[i];
-    if (code !== undefined) {
-      binary += String.fromCharCode(code);
-    }
-  }
-  return btoa(binary);
+function noStoreFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, { ...init, cache: "no-store" });
 }
 
-async function kvCommand<T = unknown>(
-  kv: { url: string; token: string },
-  args: string[],
-): Promise<T | null> {
-  const res = await fetch(kv.url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${kv.token}`,
-      "Content-Type": "application/json",
+function createAnonSupabaseClient(config: SupabaseServerConfig): SupabaseClient {
+  return createClient(config.url, config.anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
-    body: JSON.stringify(args),
-    cache: "no-store",
+    global: {
+      fetch: noStoreFetch,
+    },
   });
-  if (!res.ok) return null;
-  const payload = (await res.json()) as { result?: T };
-  return payload.result ?? null;
 }
 
-async function readFromKv(kv: { url: string; token: string }): Promise<PortfolioData | null> {
-  try {
-    const raw = await kvCommand<string>(kv, ["GET", KV_DATA_KEY]);
-    if (!raw || typeof raw !== "string") return null;
-    return normalizePortfolioData(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-async function readFromGitHub(
-  repo: string,
-  branch: string,
-  token?: string,
-): Promise<PortfolioData | null> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github.raw+json",
-    "User-Agent": "banu-portfolio-app",
-  };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  try {
-    const res = await fetch(
-      `https://api.github.com/repos/${repo}/contents/${GITHUB_DATA_PATH}?ref=${encodeURIComponent(branch)}`,
-      {
-        headers,
-        cache: "no-store",
-        signal: AbortSignal.timeout(3500),
+function createAuthedSupabaseClient(
+  config: SupabaseServerConfig,
+  accessToken: string,
+): SupabaseClient {
+  return createClient(config.url, config.anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      fetch: noStoreFetch,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
       },
-    );
-    if (res.ok) {
-      const json = await res.json();
-      return normalizePortfolioData(json);
-    }
-  } catch {
-    // Fall through to raw URL below
-  }
-
-  try {
-    const rawRes = await fetch(
-      `https://raw.githubusercontent.com/${repo}/${encodeURIComponent(branch)}/${GITHUB_DATA_PATH}?t=${Date.now()}`,
-      {
-        cache: "no-store",
-        signal: AbortSignal.timeout(2500),
-      },
-    );
-    if (rawRes.ok) {
-      const json = await rawRes.json();
-      return normalizePortfolioData(json);
-    }
-  } catch {
-    // Ignore unreachable network / private repo
-  }
-
-  return null;
+    },
+  });
 }
 
-async function writeToGitHub(
-  target: { token: string; repo: string; branch: string },
-  data: PortfolioData,
-): Promise<{ ok: boolean; error?: string }> {
-  const baseUrl = `https://api.github.com/repos/${target.repo}/contents/${GITHUB_DATA_PATH}`;
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${target.token}`,
-    "User-Agent": "banu-portfolio-app",
-    "Content-Type": "application/json",
+function writeAuthCookies(accessToken: string, refreshToken: string) {
+  let secure = false;
+  try {
+    secure = getRequestProtocol({ xForwardedProto: true }) === "https";
+  } catch {
+    secure = false;
+  }
+
+  const baseOptions = {
+    httpOnly: true,
+    secure,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
   };
 
-  let sha: string | undefined;
-  try {
-    const existing = await fetch(`${baseUrl}?ref=${encodeURIComponent(target.branch)}`, {
-      headers,
-      cache: "no-store",
+  setCookie(ACCESS_COOKIE, accessToken, baseOptions);
+  setCookie(REFRESH_COOKIE, refreshToken, baseOptions);
+}
+
+function clearAuthCookies() {
+  deleteCookie(ACCESS_COOKIE, { path: "/" });
+  deleteCookie(REFRESH_COOKIE, { path: "/" });
+}
+
+function mapRowToPortfolioData(row: PortfolioSiteRow): PortfolioData {
+  const parsedTime = row.updated_at ? Date.parse(row.updated_at) : 0;
+  return normalizePortfolioData({
+    profile: row.profile,
+    about: row.about,
+    skills: row.skills,
+    projects: row.projects,
+    experience: row.experience,
+    education: row.education,
+    certifications: row.certifications,
+    contact: row.contact,
+    footer: row.footer,
+    updatedAt: Number.isFinite(parsedTime) && parsedTime > 0 ? parsedTime : Date.now(),
+  });
+}
+
+async function verifyUserIsAdmin(
+  config: SupabaseServerConfig,
+  accessToken: string,
+  userId: string,
+): Promise<boolean> {
+  const authedClient = createAuthedSupabaseClient(config, accessToken);
+  const { data, error } = await authedClient
+    .from(ADMIN_TABLE)
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!error && data?.user_id === userId) {
+    return true;
+  }
+
+  // Fallback check via service-role if RLS read on admin_users wasn't configured
+  if (config.serviceRoleKey) {
+    const serviceClient = createClient(config.url, config.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: noStoreFetch },
     });
-    if (existing.ok) {
-      const meta = (await existing.json()) as { sha?: string };
-      sha = meta.sha;
-    } else if (existing.status !== 404) {
-      const errBody = await existing.text();
-      return { ok: false, error: `GitHub read failed (${existing.status}): ${errBody.slice(0, 140)}` };
+    const { data: svcData } = await serviceClient
+      .from(ADMIN_TABLE)
+      .select("user_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (svcData?.user_id === userId) return true;
+  }
+
+  return false;
+}
+
+async function resolveAuthenticatedAdmin(config: SupabaseServerConfig): Promise<{
+  ok: boolean;
+  userId?: string;
+  email?: string | null;
+  accessToken?: string;
+  reason?: string;
+}> {
+  const accessToken = getCookie(ACCESS_COOKIE);
+  const refreshToken = getCookie(REFRESH_COOKIE);
+
+  if (!accessToken && !refreshToken) {
+    return { ok: false, reason: "Not signed in." };
+  }
+
+  const supabase = createAnonSupabaseClient(config);
+  let activeToken = accessToken || "";
+  let user: { id: string; email?: string | undefined } | null = null;
+
+  if (activeToken) {
+    const { data } = await supabase.auth.getUser(activeToken);
+    if (data?.user) {
+      user = data.user;
     }
-  } catch (err) {
+  }
+
+  if (!user && refreshToken) {
+    const { data: refreshed } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+    if (refreshed?.session && refreshed.user) {
+      activeToken = refreshed.session.access_token;
+      user = refreshed.user;
+      writeAuthCookies(refreshed.session.access_token, refreshed.session.refresh_token);
+    }
+  }
+
+  if (!user || !activeToken) {
+    clearAuthCookies();
+    return { ok: false, reason: "Session expired. Please sign in again." };
+  }
+
+  const isAdmin = await verifyUserIsAdmin(config, activeToken, user.id);
+  if (!isAdmin) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : "Failed to connect to GitHub API",
+      reason: "Signed-in account is not authorized in public.admin_users.",
     };
   }
 
-  const content = utf8ToBase64(`${JSON.stringify(data, null, 2)}\n`);
-  const putRes = await fetch(baseUrl, {
-    method: "PUT",
-    headers,
-    body: JSON.stringify({
-      message: "chore(admin): publish portfolio updates",
-      content,
-      branch: target.branch,
-      ...(sha ? { sha } : {}),
-    }),
-  });
-
-  if (!putRes.ok) {
-    const errText = await putRes.text();
-    return {
-      ok: false,
-      error: `GitHub update failed (${putRes.status}): ${errText.slice(0, 160)}`,
-    };
-  }
-
-  return { ok: true };
+  return {
+    ok: true,
+    userId: user.id,
+    email: user.email ?? null,
+    accessToken: activeToken,
+  };
 }
 
 async function readLocalDevFile(): Promise<PortfolioData | null> {
@@ -217,255 +279,282 @@ async function readLocalDevFile(): Promise<PortfolioData | null> {
   }
 }
 
-async function writeLocalDevFile(data: PortfolioData): Promise<boolean> {
-  try {
-    const fs = await import(/* @vite-ignore */ "node:fs/promises");
-    const path = await import(/* @vite-ignore */ "node:path");
-    const filePath = path.join(process.cwd(), "public", "portfolio-data.json");
-    await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function resolveExpectedServerPasscode(
-  env: Record<string, string | undefined>,
-  kv: { url: string; token: string } | null,
-): Promise<{ expected: string; serverManaged: boolean }> {
-  const envPasscode = env["ADMIN_PASSCODE"];
-  if (envPasscode && envPasscode.trim()) {
-    return { expected: envPasscode.trim(), serverManaged: true };
-  }
-  if (kv) {
-    try {
-      const kvPass = await kvCommand<string>(kv, ["GET", KV_PASSCODE_KEY]);
-      if (kvPass && typeof kvPass === "string" && kvPass.trim()) {
-        return { expected: kvPass.trim(), serverManaged: true };
-      }
-    } catch {
-      // Ignore
-    }
-  }
-  return { expected: "admin123", serverManaged: false };
-}
-
 export const getCloudSyncStatusFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<CloudSyncStatus> => {
     const env = getEnv();
-    const kv = getKvCredentials(env);
-    const gh = getGitHubTarget(env);
-    const local = isLocalDevServer(env);
+    const config = getSupabaseServerConfig();
+    if (!config) {
+      return {
+        backend: isLocalDevServer(env) ? "local" : "none",
+        supabaseConfigured: false,
+        hasPublishedRow: false,
+      };
+    }
 
-    const backend: CloudBackend = kv
-      ? "kv"
-      : gh.token
-        ? "github"
-        : local
-          ? "local"
-          : "none";
+    try {
+      const supabase = createAnonSupabaseClient(config);
+      const { data, error } = await supabase
+        .from(PORTFOLIO_TABLE)
+        .select("id")
+        .eq("id", PORTFOLIO_ROW_ID)
+        .maybeSingle();
 
-    return {
-      backend,
-      hasServerKv: Boolean(kv),
-      hasServerGithub: Boolean(gh.token),
-      repo: gh.repo,
-      branch: gh.branch,
-    };
+      if (!error && data?.id === PORTFOLIO_ROW_ID) {
+        return {
+          backend: "supabase",
+          supabaseConfigured: true,
+          hasPublishedRow: true,
+        };
+      }
+      return {
+        backend: "supabase-empty",
+        supabaseConfigured: true,
+        hasPublishedRow: false,
+      };
+    } catch {
+      return {
+        backend: "supabase-empty",
+        supabaseConfigured: true,
+        hasPublishedRow: false,
+      };
+    }
   },
 );
 
 export const getRemotePortfolioDataFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ data: PortfolioData | null; source: CloudBackend }> => {
     const env = getEnv();
-    const kv = getKvCredentials(env);
+    const config = getSupabaseServerConfig();
 
-    if (kv) {
-      const kvData = await readFromKv(kv);
-      if (kvData) {
-        return { data: kvData, source: "kv" };
+    if (config) {
+      try {
+        const supabase = createAnonSupabaseClient(config);
+        const { data, error } = await supabase
+          .from(PORTFOLIO_TABLE)
+          .select(
+            "id, profile, about, skills, projects, experience, education, certifications, contact, footer, updated_at",
+          )
+          .eq("id", PORTFOLIO_ROW_ID)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            data: mapRowToPortfolioData(data as PortfolioSiteRow),
+            source: "supabase",
+          };
+        }
+        return { data: null, source: "supabase-empty" };
+      } catch {
+        return { data: null, source: "supabase-empty" };
       }
     }
 
-    const gh = getGitHubTarget(env);
-    const localData = isLocalDevServer(env) ? await readLocalDevFile() : null;
-    const ghData = await readFromGitHub(gh.repo, gh.branch, gh.token);
-
-    if (localData && ghData) {
-      return (localData.updatedAt || 0) >= (ghData.updatedAt || 0)
-        ? { data: localData, source: "local" }
-        : { data: ghData, source: "github" };
+    if (isLocalDevServer(env)) {
+      const local = await readLocalDevFile();
+      if (local) return { data: local, source: "local" };
     }
-
-    if (ghData) return { data: ghData, source: "github" };
-    if (localData) return { data: localData, source: "local" };
 
     return { data: null, source: "none" };
   },
 );
 
-export const verifyAdminPasscodeFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) => input as { passcode: string })
-  .handler(async ({ data }): Promise<{ valid: boolean; serverManaged: boolean }> => {
-    const env = getEnv();
-    const kv = getKvCredentials(env);
-    const { expected, serverManaged } = await resolveExpectedServerPasscode(env, kv);
-    return {
-      valid: (data?.passcode || "").trim() === expected,
-      serverManaged,
-    };
-  });
-
-export const updateRemotePasscodeFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) => input as { currentPasscode: string; newPasscode: string })
-  .handler(async ({ data }): Promise<{ ok: boolean; syncedToKv: boolean; message: string }> => {
-    const env = getEnv();
-    const kv = getKvCredentials(env);
-    const nextPass = (data?.newPasscode || "").trim();
-
-    if (nextPass.length < 4) {
-      return { ok: false, syncedToKv: false, message: "Passcode must be at least 4 characters." };
-    }
-
-    if (env["ADMIN_PASSCODE"]) {
+export const getAdminSessionFn = createServerFn({ method: "GET" }).handler(
+  async (): Promise<AdminSessionStatus> => {
+    const config = getSupabaseServerConfig();
+    if (!config) {
       return {
-        ok: false,
-        syncedToKv: false,
-        message: "Passcode is managed via ADMIN_PASSCODE environment variable on the server.",
+        authenticated: false,
+        email: null,
+        supabaseConfigured: false,
+        reason: "Supabase environment variables (SUPABASE_URL, SUPABASE_ANON_KEY) are not configured.",
       };
     }
 
-    if (!kv) {
+    const session = await resolveAuthenticatedAdmin(config);
+    return {
+      authenticated: session.ok,
+      email: session.email ?? null,
+      supabaseConfigured: true,
+      ...(session.reason ? { reason: session.reason } : {}),
+    };
+  },
+);
+
+export const adminLoginFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input as { email: string; password: string })
+  .handler(
+    async ({
+      data,
+    }): Promise<{ ok: boolean; email?: string | null; message: string }> => {
+      const config = getSupabaseServerConfig();
+      if (!config) {
+        return {
+          ok: false,
+          message:
+            "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY to your environment variables.",
+        };
+      }
+
+      const email = (data?.email || "").trim();
+      const password = data?.password || "";
+      if (!email || !password) {
+        return { ok: false, message: "Please enter both email and password." };
+      }
+
+      const supabase = createAnonSupabaseClient(config);
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error || !authData.session || !authData.user) {
+        return {
+          ok: false,
+          message: error?.message || "Invalid email or password.",
+        };
+      }
+
+      const isAdmin = await verifyUserIsAdmin(
+        config,
+        authData.session.access_token,
+        authData.user.id,
+      );
+
+      if (!isAdmin) {
+        clearAuthCookies();
+        return {
+          ok: false,
+          message:
+            "Account authenticated, but this email is not listed in public.admin_users. Add your user to public.admin_users in Supabase SQL Editor.",
+        };
+      }
+
+      writeAuthCookies(authData.session.access_token, authData.session.refresh_token);
+
       return {
         ok: true,
-        syncedToKv: false,
-        message: "Passcode updated in this browser.",
+        email: authData.user.email ?? email,
+        message: "Signed in securely via Supabase Auth!",
+      };
+    },
+  );
+
+export const adminLogoutFn = createServerFn({ method: "POST" }).handler(async () => {
+  clearAuthCookies();
+  return { ok: true };
+});
+
+export const updateAdminPasswordFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input as { newPassword: string })
+  .handler(async ({ data }): Promise<{ ok: boolean; message: string }> => {
+    const config = getSupabaseServerConfig();
+    if (!config) {
+      return { ok: false, message: "Supabase is not configured." };
+    }
+
+    const newPassword = (data?.newPassword || "").trim();
+    if (newPassword.length < 8) {
+      return { ok: false, message: "Password must be at least 8 characters long." };
+    }
+
+    const admin = await resolveAuthenticatedAdmin(config);
+    if (!admin.ok || !admin.accessToken) {
+      return { ok: false, message: admin.reason || "Unauthorized." };
+    }
+
+    const res = await fetch(`${config.url}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${admin.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password: newPassword }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      return {
+        ok: false,
+        message: `Failed to update password (${res.status}): ${errBody.slice(0, 140)}`,
       };
     }
 
-    const { expected } = await resolveExpectedServerPasscode(env, kv);
-    if ((data?.currentPasscode || "").trim() !== expected) {
-      return { ok: false, syncedToKv: false, message: "Current passcode is incorrect." };
-    }
-
-    const res = await kvCommand(kv, ["SET", KV_PASSCODE_KEY, nextPass]);
-    return res
-      ? { ok: true, syncedToKv: true, message: "Admin passcode synced globally!" }
-      : { ok: false, syncedToKv: false, message: "Failed to save passcode to cloud database." };
+    return { ok: true, message: "Supabase admin password updated successfully!" };
   });
 
 export const saveRemotePortfolioDataFn = createServerFn({ method: "POST" })
-  .validator(
-    (input: unknown) =>
-      input as {
-        data: PortfolioData;
-        passcode?: string | undefined;
-        githubToken?: string | undefined;
-        githubRepo?: string | undefined;
-        githubBranch?: string | undefined;
-      },
-  )
+  .validator((input: unknown) => input as { data: PortfolioData })
   .handler(async ({ data: input }): Promise<SaveRemoteResult> => {
-    const env = getEnv();
-    const kv = getKvCredentials(env);
-    const gh = getGitHubTarget(env, {
-      token: input.githubToken,
-      repo: input.githubRepo,
-      branch: input.githubBranch,
-    });
-
-    const { expected, serverManaged } = await resolveExpectedServerPasscode(env, kv);
-    const providedPass = (input.passcode || "").trim();
-    const hasCustomGithubToken = Boolean(input.githubToken?.trim());
-
-    if (serverManaged && providedPass !== expected) {
+    const config = getSupabaseServerConfig();
+    if (!config) {
       return {
         ok: false,
         backend: "none",
-        reason: "UNAUTHORIZED",
-        message: "Incorrect admin passcode.",
+        reason: "SUPABASE_NOT_CONFIGURED",
+        message:
+          "Supabase is not configured on the server. Add SUPABASE_URL and SUPABASE_ANON_KEY to Vercel Environment Variables.",
       };
     }
 
-    if (!serverManaged && providedPass !== expected && !hasCustomGithubToken) {
+    const admin = await resolveAuthenticatedAdmin(config);
+    if (!admin.ok || !admin.accessToken || !admin.userId) {
       return {
         ok: false,
-        backend: "none",
+        backend: "supabase",
         reason: "UNAUTHORIZED",
-        message: "Incorrect admin passcode.",
+        message: admin.reason || "Admin authentication required to publish changes.",
       };
     }
 
-    const stamped: PortfolioData = {
-      ...normalizePortfolioData(input.data),
-      updatedAt: Date.now(),
+    const normalized = normalizePortfolioData(input.data);
+    const nowIso = new Date().toISOString();
+
+    const rowPayload = {
+      id: PORTFOLIO_ROW_ID,
+      profile: normalized.profile,
+      about: normalized.about,
+      skills: normalized.skills,
+      projects: normalized.projects,
+      experience: normalized.experience,
+      education: normalized.education,
+      certifications: normalized.certifications,
+      contact: normalized.contact ?? {},
+      footer: normalized.footer ?? {},
+      updated_at: nowIso,
+      updated_by: admin.userId,
     };
 
-    if (kv) {
-      try {
-        const res = await kvCommand(kv, ["SET", KV_DATA_KEY, JSON.stringify(stamped)]);
-        if (res !== null) {
-          // Best-effort secondary mirror to GitHub if token is also configured
-          if (gh.token) {
-            await writeToGitHub(gh, stamped).catch(() => {});
-          }
-          return {
-            ok: true,
-            backend: "kv",
-            data: stamped,
-            message: "Published live! All browsers & devices now show your updates immediately.",
-          };
-        }
-      } catch {
-        // Fall through to GitHub if KV write fails
-      }
-      if (!gh.token) {
-        return {
-          ok: false,
-          backend: "kv",
-          reason: "KV_ERROR",
-          message: "Cloud database write failed. Please check KV credentials.",
-        };
-      }
-    }
+    // Execute write with the authenticated admin's JWT so PostgreSQL RLS policies enforce authorization
+    const authedClient = createAuthedSupabaseClient(config, admin.accessToken);
+    const { data: savedRow, error } = await authedClient
+      .from(PORTFOLIO_TABLE)
+      .upsert(rowPayload, { onConflict: "id" })
+      .select(
+        "id, profile, about, skills, projects, experience, education, certifications, contact, footer, updated_at",
+      )
+      .single();
 
-    if (gh.token) {
-      const ghRes = await writeToGitHub(gh, stamped);
-      if (ghRes.ok) {
-        return {
-          ok: true,
-          backend: "github",
-          data: stamped,
-          message:
-            "Published to GitHub! All browsers & devices will now see your updates (Vercel rebuild completes in ~30s).",
-        };
-      }
+    if (error || !savedRow) {
+      const isRls =
+        error?.code === "42501" ||
+        error?.message?.toLowerCase().includes("row-level security") ||
+        error?.message?.toLowerCase().includes("permission denied");
       return {
         ok: false,
-        backend: "github",
-        reason: "GITHUB_ERROR",
-        message: ghRes.error || "Failed to publish to GitHub.",
+        backend: "supabase",
+        reason: isRls ? "RLS_FORBIDDEN" : "SUPABASE_ERROR",
+        message: isRls
+          ? "Database permission denied by Supabase RLS. Ensure your user is added to public.admin_users."
+          : `Failed to save to Supabase: ${error?.message || "Unknown error"}`,
       };
     }
 
-    if (isLocalDevServer(env)) {
-      const wrote = await writeLocalDevFile(stamped);
-      if (wrote) {
-        return {
-          ok: true,
-          backend: "local",
-          data: stamped,
-          message: "Saved to local public/portfolio-data.json (visible across local browsers).",
-        };
-      }
-    }
-
+    const mapped = mapRowToPortfolioData(savedRow as PortfolioSiteRow);
     return {
-      ok: false,
-      backend: "none",
-      reason: "NO_CLOUD_BACKEND",
-      data: stamped,
-      message:
-        "Saved in this browser only. Connect Cloud Sync in Settings so other browsers see your updates.",
+      ok: true,
+      backend: "supabase",
+      data: mapped,
+      message: "Published live to Supabase! All browsers & devices now show your updates immediately.",
     };
   });
