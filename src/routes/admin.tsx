@@ -22,11 +22,17 @@ import {
   Sparkles,
   ExternalLink,
   Mail,
+  Cloud,
+  CloudOff,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   usePortfolioData,
   saveStoredPortfolioData,
+  getSavedGitHubSyncConfig,
+  saveGitHubSyncConfig,
+  clearGitHubSyncConfig,
   DEFAULT_PORTFOLIO_DATA,
   type PortfolioData,
   type ProjectItem,
@@ -34,8 +40,21 @@ import {
   type CertificationItem,
   type SkillCategory,
 } from "@/lib/portfolio-data";
+import {
+  getRemotePortfolioDataFn,
+  verifyAdminPasscodeFn,
+  updateRemotePasscodeFn,
+} from "@/lib/portfolio-server";
 
 export const Route = createFileRoute("/admin")({
+  loader: async () => {
+    try {
+      const res = await getRemotePortfolioDataFn();
+      return { initialData: res?.data ?? null };
+    } catch {
+      return { initialData: null };
+    }
+  },
   head: () => ({
     meta: [
       { title: "Admin Studio — Banupriya Portfolio" },
@@ -47,12 +66,25 @@ export const Route = createFileRoute("/admin")({
 
 const PASSCODE_STORAGE_KEY = "banupriya_admin_passcode";
 const AUTH_SESSION_KEY = "banupriya_admin_auth";
+const AUTH_PASSCODE_SESSION_KEY = "banupriya_admin_session_passcode";
 
 function AdminPage() {
-  const { data, updateData, resetData, exportJson, importJson, isLoaded } = usePortfolioData();
+  const { initialData } = Route.useLoaderData();
+  const {
+    data,
+    publishData,
+    isPublishing,
+    cloudStatus,
+    refreshCloudStatus,
+    resetData,
+    exportJson,
+    importJson,
+    isLoaded,
+  } = usePortfolioData(initialData);
 
   // Local editable draft state
-  const [formData, setFormData] = useState<PortfolioData>(data);
+  const [formData, setRawFormData] = useState<PortfolioData>(data);
+  const [hasUnsavedDraft, setHasUnsavedDraft] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [passcodeInput, setPasscodeInput] = useState<string>("");
   const [passcodeError, setPasscodeError] = useState<string>("");
@@ -63,78 +95,172 @@ function AdminPage() {
   const [importText, setImportText] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
   const [newPasscode, setNewPasscode] = useState("");
+  const [githubTokenInput, setGithubTokenInput] = useState("");
+  const [githubRepoInput, setGithubRepoInput] = useState("Banupriya0811/banu_portfolio");
+  const [githubBranchInput, setGithubBranchInput] = useState("main");
 
-  // Sync draft on initial load
+  const setFormData: React.Dispatch<React.SetStateAction<PortfolioData>> = (updater) => {
+    setHasUnsavedDraft(true);
+    setRawFormData(updater);
+  };
+
+  // Sync draft when remote/initial data arrives (unless user already started editing)
   useEffect(() => {
-    if (isLoaded) {
-      setFormData(data);
+    if (isLoaded && !hasUnsavedDraft) {
+      setRawFormData(data);
     }
-  }, [isLoaded]);
+  }, [isLoaded, data, hasUnsavedDraft]);
 
-  // Auto-save any edits directly into storage so nothing is ever lost
+  // Auto-save draft locally while typing so edits aren't lost on accidental refresh
   useEffect(() => {
-    if (isLoaded && isAuthenticated) {
-      saveStoredPortfolioData(formData);
+    if (isLoaded && isAuthenticated && hasUnsavedDraft) {
+      saveStoredPortfolioData({ ...formData, updatedAt: Date.now() });
     }
-  }, [formData, isLoaded, isAuthenticated]);
+  }, [formData, isLoaded, isAuthenticated, hasUnsavedDraft]);
 
-  // Check auth session
+  // Check auth session & saved GitHub sync settings
   useEffect(() => {
     if (typeof window !== "undefined") {
       const auth = sessionStorage.getItem(AUTH_SESSION_KEY);
       if (auth === "true") {
         setIsAuthenticated(true);
       }
+      const gh = getSavedGitHubSyncConfig();
+      setGithubTokenInput(gh.token);
+      setGithubRepoInput(gh.repo);
+      setGithubBranchInput(gh.branch);
+      refreshCloudStatus();
     }
-  }, []);
+  }, [refreshCloudStatus]);
 
   const getStoredPasscode = () => {
     if (typeof window === "undefined") return "admin123";
     return localStorage.getItem(PASSCODE_STORAGE_KEY) || "admin123";
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const correct = getStoredPasscode();
-    if (passcodeInput.trim() === correct) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem(AUTH_SESSION_KEY, "true");
-      setPasscodeError("");
-      toast.success("Welcome to Portfolio Admin Studio!");
-    } else {
-      setPasscodeError("Incorrect passcode. Default is admin123");
-      toast.error("Incorrect passcode.");
+    const entered = passcodeInput.trim();
+    const localCorrect = getStoredPasscode();
+
+    try {
+      const serverCheck = await verifyAdminPasscodeFn({ data: { passcode: entered } });
+      const isValid = serverCheck.serverManaged ? serverCheck.valid : entered === localCorrect || serverCheck.valid;
+      if (isValid) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem(AUTH_SESSION_KEY, "true");
+        sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, entered);
+        setPasscodeError("");
+        toast.success("Welcome to Portfolio Admin Studio!");
+        return;
+      }
+    } catch {
+      if (entered === localCorrect) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem(AUTH_SESSION_KEY, "true");
+        sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, entered);
+        setPasscodeError("");
+        toast.success("Welcome to Portfolio Admin Studio!");
+        return;
+      }
     }
+
+    setPasscodeError("Incorrect passcode. Default is admin123");
+    toast.error("Incorrect passcode.");
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     sessionStorage.removeItem(AUTH_SESSION_KEY);
+    sessionStorage.removeItem(AUTH_PASSCODE_SESSION_KEY);
     toast.info("Logged out of Admin Studio.");
   };
 
-  const handleSaveAll = () => {
-    saveStoredPortfolioData(formData);
-    updateData(() => formData);
-    toast.success("All portfolio updates saved and published successfully!");
+  const handleLocalDraftOnly = () => {
+    saveStoredPortfolioData({ ...formData, updatedAt: Date.now() });
+  };
+
+  const handleSaveAll = async () => {
+    const activePasscode =
+      (typeof window !== "undefined" && sessionStorage.getItem(AUTH_PASSCODE_SESSION_KEY)) ||
+      getStoredPasscode();
+
+    const result = await publishData(formData, {
+      passcode: activePasscode,
+      githubToken: githubTokenInput.trim() || undefined,
+      githubRepo: githubRepoInput.trim() || undefined,
+      githubBranch: githubBranchInput.trim() || undefined,
+    });
+
+    if (result.ok) {
+      setHasUnsavedDraft(false);
+      toast.success(result.message);
+    } else if (result.reason === "NO_CLOUD_BACKEND") {
+      toast.warning(result.message, {
+        duration: 6000,
+        action: {
+          label: "Setup Sync",
+          onClick: () => setActiveTab("settings"),
+        },
+      });
+    } else {
+      toast.error(result.message);
+    }
+  };
+
+  const handleSaveGitHubSync = async () => {
+    saveGitHubSyncConfig({
+      token: githubTokenInput.trim(),
+      repo: githubRepoInput.trim() || "Banupriya0811/banu_portfolio",
+      branch: githubBranchInput.trim() || "main",
+    });
+    toast.success("GitHub Cloud Sync config saved! Publishing your portfolio now...");
+    await handleSaveAll();
+  };
+
+  const handleClearGitHubSync = () => {
+    clearGitHubSyncConfig();
+    setGithubTokenInput("");
+    toast.info("Removed browser GitHub sync token.");
   };
 
   const handleReset = () => {
     if (window.confirm("Are you sure you want to reset all portfolio data to defaults?")) {
       resetData();
       setFormData(DEFAULT_PORTFOLIO_DATA);
-      toast.info("Portfolio data reset to default settings.");
+      setHasUnsavedDraft(true);
+      toast.info("Portfolio data reset to defaults. Click Save & Publish Live to sync globally.");
     }
   };
 
-  const handleSavePasscode = () => {
+  const handleSavePasscode = async () => {
     if (!newPasscode.trim() || newPasscode.length < 4) {
       toast.error("Passcode must be at least 4 characters long.");
       return;
     }
-    localStorage.setItem(PASSCODE_STORAGE_KEY, newPasscode.trim());
-    toast.success("Admin passcode updated successfully!");
-    setNewPasscode("");
+    const nextPass = newPasscode.trim();
+    const currentPass =
+      (typeof window !== "undefined" && sessionStorage.getItem(AUTH_PASSCODE_SESSION_KEY)) ||
+      getStoredPasscode();
+
+    try {
+      const res = await updateRemotePasscodeFn({
+        data: { currentPasscode: currentPass, newPasscode: nextPass },
+      });
+      if (!res.ok) {
+        toast.error(res.message);
+        return;
+      }
+      localStorage.setItem(PASSCODE_STORAGE_KEY, nextPass);
+      sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, nextPass);
+      toast.success(res.message);
+      setNewPasscode("");
+    } catch {
+      localStorage.setItem(PASSCODE_STORAGE_KEY, nextPass);
+      sessionStorage.setItem(AUTH_PASSCODE_SESSION_KEY, nextPass);
+      toast.success("Admin passcode updated in this browser!");
+      setNewPasscode("");
+    }
   };
 
   const handleImportSubmit = () => {
@@ -142,11 +268,18 @@ function AdminPage() {
     if (success) {
       setShowImportModal(false);
       setImportText("");
-      toast.success("Portfolio data imported successfully!");
+      setHasUnsavedDraft(false);
+      toast.success("Portfolio data imported! Click Save & Publish Live to sync across all browsers.");
     } else {
       toast.error("Invalid JSON format. Please verify and try again.");
     }
   };
+
+  const isCloudReady =
+    cloudStatus.backend === "kv" ||
+    cloudStatus.backend === "github" ||
+    cloudStatus.backend === "local" ||
+    Boolean(githubTokenInput.trim());
 
   // ==================== LOGIN SCREEN ====================
   if (!isAuthenticated) {
@@ -219,7 +352,7 @@ function AdminPage() {
           <div className="flex items-center gap-3">
             <Link
               to="/"
-              onClick={handleSaveAll}
+              onClick={handleLocalDraftOnly}
               className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/80 bg-card/60 text-muted-foreground transition-colors hover:text-foreground"
               title="Return to Portfolio"
             >
@@ -228,9 +361,25 @@ function AdminPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display font-bold">Admin Content Studio</span>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-emerald-500">
-                  Live Sync
-                </span>
+                {isCloudReady ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-emerald-600 dark:text-emerald-400">
+                    <Cloud size={11} />
+                    {cloudStatus.backend === "kv"
+                      ? "Cloud DB Sync"
+                      : cloudStatus.backend === "local"
+                        ? "Local File Sync"
+                        : "GitHub Cloud Sync"}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("settings")}
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-mono font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-colors cursor-pointer"
+                    title="Click to enable cross-browser cloud sync"
+                  >
+                    <CloudOff size={11} /> Browser-Only (Setup Sync)
+                  </button>
+                )}
               </div>
               <p className="text-xs text-muted-foreground hidden sm:block">
                 Edit portfolio profile, projects, skills & experience
@@ -241,7 +390,7 @@ function AdminPage() {
           <div className="flex items-center gap-2">
             <Link
               to="/"
-              onClick={handleSaveAll}
+              onClick={handleLocalDraftOnly}
               className="hidden md:inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-card/60 px-3.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
             >
               <Eye size={14} /> Preview Site
@@ -249,9 +398,18 @@ function AdminPage() {
 
             <button
               onClick={handleSaveAll}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-brand px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] glow"
+              disabled={isPublishing}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-brand px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] disabled:opacity-60 glow cursor-pointer"
             >
-              <Save size={14} /> Save Changes
+              {isPublishing ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Publishing...
+                </>
+              ) : (
+                <>
+                  <Save size={14} /> Save & Publish Live
+                </>
+              )}
             </button>
 
             <button
@@ -296,6 +454,29 @@ function AdminPage() {
 
       {/* Main Container */}
       <main className="mx-auto max-w-5xl px-4 pt-8 sm:px-6">
+        {cloudStatus.checked && !isCloudReady && activeTab !== "settings" && (
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs">
+            <div className="flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
+              <CloudOff size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <p className="font-semibold">
+                  Changes currently save to this browser only.
+                </p>
+                <p className="mt-0.5 text-amber-800/80 dark:text-amber-300/80">
+                  Connect Cloud Sync (GitHub token or Vercel KV / Upstash Redis) so other browsers and visitors immediately see your Admin edits.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab("settings")}
+              className="shrink-0 rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-amber-700 transition-colors cursor-pointer"
+            >
+              Setup Cloud Sync →
+            </button>
+          </div>
+        )}
+
         {/* ==================== TAB: PROFILE ==================== */}
         {activeTab === "profile" && (
           <div className="space-y-6">
@@ -1549,6 +1730,127 @@ function AdminPage() {
         {/* ==================== TAB: SETTINGS & BACKUP ==================== */}
         {activeTab === "settings" && (
           <div className="space-y-6">
+            {/* Cross-Browser Cloud Sync */}
+            <div className="rounded-2xl border border-primary/30 bg-card/75 p-6 backdrop-blur">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-lg font-bold flex items-center gap-2">
+                    <Cloud size={18} className="text-primary" /> Cross-Browser Cloud Sync
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Publish your Admin Studio edits globally so every browser, device, and visitor sees them.
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-mono font-semibold ${
+                    isCloudReady
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {cloudStatus.backend === "kv"
+                    ? "Active: Vercel KV / Upstash Redis"
+                    : cloudStatus.backend === "github" || Boolean(githubTokenInput.trim())
+                      ? "Active: GitHub Live Sync"
+                      : cloudStatus.backend === "local"
+                        ? "Active: Local File Sync"
+                        : "Not Connected Yet"}
+                </span>
+              </div>
+
+              {cloudStatus.hasServerKv ? (
+                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs text-emerald-800 dark:text-emerald-200">
+                  Connected via <strong>Upstash Redis / Vercel KV</strong>. Clicking{" "}
+                  <strong>Save &amp; Publish Live</strong> updates all browsers globally in real time.
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-4 text-xs text-muted-foreground space-y-1.5">
+                    <p className="font-semibold text-foreground">
+                      Option 1 (Fastest): Connect GitHub Repo Auto-Publish
+                    </p>
+                    <p>
+                      Create a GitHub Fine-grained Personal Access Token with{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">Contents: Read and write</code>{" "}
+                      permission for <code className="rounded bg-muted px-1 py-0.5">{githubRepoInput}</code> and paste it below (saved only in your admin browser) — or set{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">GITHUB_TOKEN</code> in Vercel Environment Variables.
+                    </p>
+                    <p className="pt-1">
+                      <strong>Option 2 (Instant DB, zero redeploy):</strong> Connect free{" "}
+                      <strong>Upstash Redis</strong> in Vercel Dashboard → Storage, and redeploy once (auto-detected via{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">KV_REST_API_URL</code> /{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">UPSTASH_REDIS_REST_URL</code>).
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        GitHub Personal Access Token (stored in this browser only)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="github_pat_... or ghp_..."
+                        value={githubTokenInput}
+                        onChange={(e) => setGithubTokenInput(e.target.value)}
+                        className={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        GitHub Repository
+                      </label>
+                      <input
+                        type="text"
+                        value={githubRepoInput}
+                        onChange={(e) => setGithubRepoInput(e.target.value)}
+                        className={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-muted-foreground">
+                        Branch
+                      </label>
+                      <input
+                        type="text"
+                        value={githubBranchInput}
+                        onChange={(e) => setGithubBranchInput(e.target.value)}
+                        className={inputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveGitHubSync}
+                      disabled={isPublishing || !githubTokenInput.trim()}
+                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-brand px-4 py-2 text-xs font-semibold text-primary-foreground shadow glow disabled:opacity-50 cursor-pointer"
+                    >
+                      {isPublishing ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" /> Publishing...
+                        </>
+                      ) : (
+                        <>
+                          <Cloud size={14} /> Save Token &amp; Publish Portfolio Now
+                        </>
+                      )}
+                    </button>
+                    {githubTokenInput.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleClearGitHubSync}
+                        className="rounded-xl border border-border/80 bg-card px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-destructive"
+                      >
+                        Remove Saved Token
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Security settings */}
             <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
               <h2 className="font-display text-lg font-bold">Admin Passcode</h2>
@@ -1575,7 +1877,7 @@ function AdminPage() {
 
             {/* Backup & Data Sync */}
             <div className="rounded-2xl border border-border/80 bg-card/75 p-6 backdrop-blur">
-              <h2 className="font-display text-lg font-bold">Backup & Sync Tools</h2>
+              <h2 className="font-display text-lg font-bold">Backup &amp; Sync Tools</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Export your current portfolio configuration to a downloadable JSON file, or restore from a backup.
               </p>
@@ -1621,14 +1923,27 @@ function AdminPage() {
         <div className="sticky bottom-4 mt-8 flex items-center justify-between rounded-2xl border border-primary/30 bg-card/95 p-4 shadow-xl backdrop-blur-xl">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Sparkles size={16} className="text-primary" />
-            <span>Changes persist immediately upon clicking save.</span>
+            <span>
+              {isCloudReady
+                ? "Click Save & Publish Live to update all browsers & devices."
+                : "Saves locally now; connect Cloud Sync in Settings to update all browsers."}
+            </span>
           </div>
           <div className="flex gap-2">
             <button
               onClick={handleSaveAll}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-brand px-5 py-2.5 text-xs font-bold text-primary-foreground shadow glow transition-transform hover:scale-[1.02]"
+              disabled={isPublishing}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-brand px-5 py-2.5 text-xs font-bold text-primary-foreground shadow glow transition-transform hover:scale-[1.02] disabled:opacity-60 cursor-pointer"
             >
-              <Save size={15} /> Save All Changes
+              {isPublishing ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" /> Publishing...
+                </>
+              ) : (
+                <>
+                  <Save size={15} /> Save &amp; Publish Live
+                </>
+              )}
             </button>
           </div>
         </div>

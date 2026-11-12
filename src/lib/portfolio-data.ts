@@ -1,267 +1,31 @@
-import { useState, useEffect } from "react";
-import certImg from "@/assets/proj-cert.jpg";
-import bugImg from "@/assets/proj-bug.jpg";
-import solarImg from "@/assets/proj-solar.jpg";
-import resumeAsset from "@/assets/resume.pdf.asset.json";
+import { useState, useEffect, useCallback } from "react";
+import {
+  DEFAULT_PORTFOLIO_DATA,
+  normalizePortfolioData,
+  type PortfolioData,
+  type ProjectItem,
+  type SkillCategory,
+  type ExperienceItem,
+  type EducationItem,
+  type CertificationItem,
+} from "./portfolio-shared";
+import {
+  getCloudSyncStatusFn,
+  getRemotePortfolioDataFn,
+  saveRemotePortfolioDataFn,
+  type CloudSyncStatus,
+  type SaveRemoteResult,
+} from "./portfolio-server";
 
-export interface ProjectItem {
-  id: string;
-  title: string;
-  desc: string;
-  img: string;
-  badge?: string;
-  category?: "Full Stack" | "AI / ML" | "Frontend" | "System";
-  tech: string[];
-  github: string;
-  demo?: string;
-}
-
-export interface SkillCategory {
-  title: string;
-  iconName: "Layout" | "Server" | "Database" | "Wrench" | "Code2" | "Cpu";
-  items: string[];
-}
-
-export interface ExperienceItem {
-  id: string;
-  role: string;
-  company: string;
-  when: string;
-  location?: string;
-  pts: string[];
-}
-
-export interface EducationItem {
-  degree: string;
-  institution: string;
-  period: string;
-  cgpa: string;
-  coursework: string;
-}
-
-export interface CertificationItem {
-  id: string;
-  name: string;
-  by: string;
-  detail: string;
-  link?: string;
-}
-
-export interface PortfolioData {
-  profile: {
-    name: string;
-    role: string;
-    availability: string;
-    statusPill: string;
-    achievementLine?: string;
-    avatarUrl?: string; // Optional image URL
-    initials: string; // e.g. "BP" or "B"
-    shortBio: string;
-    location: string;
-    email: string;
-    phone: string;
-    github: string;
-    linkedin: string;
-    resumeUrl: string;
-    logoTitle: string;
-    logoSuffix?: string;
-    voiceIntroBtnText?: string;
-    voiceIntroScript?: string;
-    voiceIntroAudioUrl?: string;
-  };
-  about: {
-    leadParagraph: string;
-    secondaryParagraph: string;
-    highlights: Array<{ label: string; value: string }>;
-  };
-  skills: SkillCategory[];
-  projects: ProjectItem[];
-  experience: ExperienceItem[];
-  education: EducationItem;
-  certifications: CertificationItem[];
-  contact?: {
-    eyebrow?: string;
-    title?: string;
-    subtitle?: string;
-    formNote?: string;
-  };
-  footer?: {
-    brandText?: string;
-    tagline?: string;
-    copyrightText?: string;
-  };
-}
-
-export const DEFAULT_PORTFOLIO_DATA: PortfolioData = {
-  profile: {
-    name: "Banupriya M",
-    role: "Full Stack Developer",
-    availability: "Available for Opportunities",
-    statusPill: "Available for Opportunities",
-    achievementLine: "8.1 CGPA | 3 Internships",
-    avatarUrl: "/profile.jpg",
-    initials: "BP",
-    shortBio:
-      "Full Stack Developer building responsive, scalable web applications using React, Node.js and Python.",
-    location: "Chennai, Tamil Nadu, India",
-    email: "kpmbanupriya@gmail.com",
-    phone: "+91 81221 23979",
-    github: "https://github.com/banupriya0811",
-    linkedin: "https://linkedin.com/in/banupriya-m-1337612b9",
-    resumeUrl: "/Banupriya_Resume.pdf",
-    logoTitle: "Banupriya M",
-    logoSuffix: "",
-    voiceIntroBtnText: "Quick Audio Intro",
-    voiceIntroScript:
-      "Hi, I'm Banupriya — a Full Stack Software Engineer. I specialize in building scalable web applications and robust REST APIs using React, Node.js, and Python. With hands-on experience across three engineering internships and production projects, I focus on clean architecture, responsive design, and performant systems. I am currently open to full-time engineering opportunities. Feel free to explore my projects or reach out directly to connect. Thank you!",
-    voiceIntroAudioUrl: "",
-  },
-  about: {
-    leadParagraph:
-      "I'm a results-driven Full Stack Developer with practical hands-on experience crafting production-grade web applications using React, Node.js, Express.js, MySQL and Flask. My core strengths center around resilient REST API design, component architecture, and database optimization.",
-    secondaryParagraph:
-      "Having completed real-world engineering internships, I'm accustomed to agile environments, code reviews, and end-to-end delivery. I strive to build software that marries clean architectural patterns with intuitive user experiences.",
-    highlights: [
-      { label: "Hands-on Internships", value: "3" },
-      { label: "Academic CGPA", value: "8.1" },
-      { label: "Primary Stack", value: "MERN / Python" },
-      { label: "Location", value: "Chennai" },
-    ],
-  },
-  skills: [
-    {
-      title: "Frontend Engineering",
-      iconName: "Layout",
-      items: ["React.js", "TypeScript", "JavaScript (ES6+)", "Tailwind CSS", "HTML5 & Modern CSS", "Figma to Code"],
-    },
-    {
-      title: "Backend & APIs",
-      iconName: "Server",
-      items: ["Node.js", "Express.js", "Python", "Flask", "FastAPI", "RESTful Architecture", "Java"],
-    },
-    {
-      title: "Database Management",
-      iconName: "Database",
-      items: ["MySQL", "PostgreSQL", "SQLite", "Database Modeling", "SQL Query Optimization"],
-    },
-    {
-      title: "DevOps & Tooling",
-      iconName: "Wrench",
-      items: ["Git & GitHub", "Linux (Ubuntu)", "VS Code", "Postman", "AWS Core Fundamentals", "Agile Workflow"],
-    },
-  ],
-  projects: [
-    {
-      id: "fake-cert-detection",
-      title: "AI-Powered Fake Certificate Detection using GAN",
-      desc: "Full-stack authentication and verification platform with Flask and Bcrypt. Employs GANs to simulate authentic forgery signatures to train a MobileNetV2 CNN classifier achieving 90%+ detection accuracy.",
-      img: certImg,
-      badge: "AI + Full Stack",
-      category: "AI / ML",
-      tech: ["Python", "Flask", "SQLite", "MobileNetV2", "GAN", "REST API"],
-      github: "https://github.com/banupriya0811",
-      demo: "https://github.com/banupriya0811",
-    },
-    {
-      id: "solar-pv-monitoring",
-      title: "Solar PV Health Monitoring & Fault Classification",
-      desc: "Real-time monitoring and anomaly diagnostic system built with FastAPI and React. Analyzed 1.37M+ telemetry data records using Random Forest, Decision Tree and SVM models to diagnose operating faults.",
-      img: solarImg,
-      badge: "ML Analytics",
-      category: "AI / ML",
-      tech: ["FastAPI", "React.js", "Scikit-Learn", "Pandas", "NumPy", "TailwindCSS"],
-      github: "https://github.com/banupriya0811",
-      demo: "https://github.com/banupriya0811",
-    },
-    {
-      id: "bug-tracking-system",
-      title: "Bug Tracking & Release Management System",
-      desc: "Enterprise workflow suite providing role-based dashboards for Admins, Developers, and QA Testers. Features issue tracking, attachment handling, audit logs, and release readiness checklists.",
-      img: bugImg,
-      badge: "Featured System",
-      category: "Full Stack",
-      tech: ["React.js", "Node.js", "Express.js", "PostgreSQL", "JWT Authentication"],
-      github: "https://github.com/banupriya0811",
-      demo: "https://github.com/banupriya0811",
-    },
-  ],
-  experience: [
-    {
-      id: "exp-aescion",
-      role: "Full Stack Developer Intern",
-      company: "Aescion EDTECH Solutions",
-      when: "Aug 2026 – Present",
-      location: "On-site",
-      pts: [
-        "Architect and implement full stack features across frontend user interfaces and backend API routes.",
-        "Collaborate with senior developers on real-world requirements, modular refactoring, and automated testing.",
-        "Optimize response latency and database operations for core educational modules.",
-      ],
-    },
-    {
-      id: "exp-fantasy",
-      role: "Full Stack Web Development Intern",
-      company: "Fantasy Solution",
-      when: "Jun 2025 – Jul 2025",
-      location: "Remote",
-      pts: [
-        "Developed responsive full-stack modules utilizing HTML5, CSS3, JavaScript and Node.js with REST API integration.",
-        "Participated actively in agile sprints, peer code reviews, and UI component standardization.",
-        "Ensured seamless cross-browser responsiveness and accessibility standards.",
-      ],
-    },
-    {
-      id: "exp-8queens",
-      role: "Full Stack Web Development Intern",
-      company: "8Queens Software Technologies Pvt. Ltd.",
-      when: "Jan 2025 – Feb 2025",
-      location: "On-site",
-      pts: [
-        "Crafted reusable UI components and client-side logic to accelerate internal release cycles.",
-        "Managed repository version control using Git/GitHub, resolving merge conflicts and debugging staging issues.",
-        "Conducted end-to-end manual and unit validation before production deployments.",
-      ],
-    },
-  ],
-  education: {
-    degree: "B.Tech – Information Technology",
-    institution: "University College of Engineering, Tiruchirappalli",
-    period: "2022 – 2026",
-    cgpa: "CGPA 8.1 / 10",
-    coursework:
-      "Web Technologies, Full Stack Web Development, Database Management Systems (DBMS), Computer Networks, Operating Systems, Cloud Service Management, Object Oriented Design, UI/UX Principles.",
-  },
-  certifications: [
-    {
-      id: "cert-cloud",
-      name: "Cloud Computing Certification",
-      by: "NPTEL (IIT Kharagpur)",
-      detail: "In-depth coursework covering IaaS, PaaS, SaaS, Virtualization architectures, AWS core services, and Cloud Security.",
-    },
-    {
-      id: "cert-fullstack",
-      name: "Full Stack Web Development",
-      by: "NoviTech R&D Private Limited",
-      detail: "End-to-end development curriculum covering HTML5, CSS3, JavaScript, Node.js, Express, React and MySQL integration.",
-    },
-    {
-      id: "cert-uiux",
-      name: "UI/UX Design Professional Certificate",
-      by: "Simplilearn",
-      detail: "User journey mapping, wireframing, high-fidelity prototyping, design heuristics, and user experience evaluation.",
-    },
-  ],
-  contact: {
-    eyebrow: "get in touch",
-    title: "Let's Connect",
-    subtitle: "Available for full stack and frontend developer opportunities. Feel free to reach out directly.",
-    formNote: "I am currently open to full-time roles, engineering internships, and technical collaborations. Whether you have questions about my projects or an open role, drop a note below.",
-  },
-  footer: {
-    brandText: "Banupriya M",
-    tagline: "Full Stack Developer building scalable, responsive web applications.",
-    copyrightText: "© 2026 Banupriya M - Full Stack Developer - All rights reserved.",
-  },
+export {
+  DEFAULT_PORTFOLIO_DATA,
+  normalizePortfolioData,
+  type PortfolioData,
+  type ProjectItem,
+  type SkillCategory,
+  type ExperienceItem,
+  type EducationItem,
+  type CertificationItem,
 };
 
 const STORAGE_KEYS = [
@@ -271,51 +35,63 @@ const STORAGE_KEYS = [
   "banupriya_portfolio_data",
 ];
 
-export function getStoredPortfolioData(): PortfolioData {
-  if (typeof window === "undefined") {
-    return DEFAULT_PORTFOLIO_DATA;
-  }
+const GITHUB_SYNC_CONFIG_KEY = "banupriya_admin_github_sync";
+
+export interface GitHubSyncConfig {
+  token: string;
+  repo: string;
+  branch: string;
+}
+
+export function getSavedGitHubSyncConfig(): GitHubSyncConfig {
+  const fallback: GitHubSyncConfig = {
+    token: "",
+    repo: "Banupriya0811/banu_portfolio",
+    branch: "main",
+  };
+  if (typeof window === "undefined") return fallback;
   try {
-    let raw: string | null = null;
+    const raw = localStorage.getItem(GITHUB_SYNC_CONFIG_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<GitHubSyncConfig>;
+    return {
+      token: parsed.token || "",
+      repo: parsed.repo || fallback.repo,
+      branch: parsed.branch || fallback.branch,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveGitHubSyncConfig(config: GitHubSyncConfig): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(GITHUB_SYNC_CONFIG_KEY, JSON.stringify(config));
+}
+
+export function clearGitHubSyncConfig(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(GITHUB_SYNC_CONFIG_KEY);
+}
+
+function readRawLocalStorage(): PortfolioData | null {
+  if (typeof window === "undefined") return null;
+  try {
     for (const key of STORAGE_KEYS) {
       const val = localStorage.getItem(key);
       if (val) {
-        raw = val;
-        break;
+        return normalizePortfolioData(JSON.parse(val));
       }
     }
-    if (!raw) return DEFAULT_PORTFOLIO_DATA;
-    const parsed = JSON.parse(raw);
-    if (parsed.profile) {
-      if (parsed.profile.logoTitle === "Banupriya" || !parsed.profile.logoTitle) {
-        parsed.profile.logoTitle = "Banupriya M";
-      }
-      if (parsed.profile.logoSuffix) {
-        parsed.profile.logoSuffix = "";
-      }
-      if (
-        !parsed.profile.resumeUrl ||
-        parsed.profile.resumeUrl.includes("/__l5e") ||
-        parsed.profile.resumeUrl === "#" ||
-        parsed.profile.resumeUrl.includes("Banupriya_resume.pdf") ||
-        !parsed.profile.resumeUrl.toLowerCase().includes(".pdf")
-      ) {
-        parsed.profile.resumeUrl = "/Banupriya_Resume.pdf";
-      }
-    }
-    return {
-      ...DEFAULT_PORTFOLIO_DATA,
-      ...parsed,
-      profile: { ...DEFAULT_PORTFOLIO_DATA.profile, ...(parsed.profile || {}) },
-      about: { ...DEFAULT_PORTFOLIO_DATA.about, ...(parsed.about || {}) },
-      education: { ...DEFAULT_PORTFOLIO_DATA.education, ...(parsed.education || {}) },
-      contact: { ...DEFAULT_PORTFOLIO_DATA.contact, ...(parsed.contact || {}) },
-      footer: { ...DEFAULT_PORTFOLIO_DATA.footer, ...(parsed.footer || {}) },
-    };
+    return null;
   } catch (e) {
     console.error("Failed to load portfolio data from localStorage:", e);
-    return DEFAULT_PORTFOLIO_DATA;
+    return null;
   }
+}
+
+export function getStoredPortfolioData(): PortfolioData {
+  return readRawLocalStorage() || DEFAULT_PORTFOLIO_DATA;
 }
 
 export function saveStoredPortfolioData(data: PortfolioData): void {
@@ -339,13 +115,94 @@ export function resetStoredPortfolioData(): void {
   window.dispatchEvent(new Event("portfolio_data_updated"));
 }
 
-export function usePortfolioData() {
-  const [data, setData] = useState<PortfolioData>(DEFAULT_PORTFOLIO_DATA);
-  const [isLoaded, setIsLoaded] = useState(false);
+async function fetchStaticPortfolioJson(): Promise<PortfolioData | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const res = await fetch(`/portfolio-data.json?t=${Date.now()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return normalizePortfolioData(json);
+  } catch {
+    return null;
+  }
+}
+
+function pickNewestData(
+  candidates: Array<PortfolioData | null | undefined>,
+): PortfolioData {
+  let winner: PortfolioData | null = null;
+  for (const item of candidates) {
+    if (!item) continue;
+    if (!winner) {
+      winner = item;
+      continue;
+    }
+    if ((item.updatedAt || 0) > (winner.updatedAt || 0)) {
+      winner = item;
+    }
+  }
+  return winner || DEFAULT_PORTFOLIO_DATA;
+}
+
+export function usePortfolioData(initialData?: PortfolioData | null) {
+  const [data, setData] = useState<PortfolioData>(
+    initialData ? normalizePortfolioData(initialData) : DEFAULT_PORTFOLIO_DATA,
+  );
+  const [isLoaded, setIsLoaded] = useState(Boolean(initialData));
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus & { checked: boolean }>({
+    backend: "none",
+    hasServerKv: false,
+    hasServerGithub: false,
+    repo: "Banupriya0811/banu_portfolio",
+    branch: "main",
+    checked: false,
+  });
+
+  const refreshCloudStatus = useCallback(async () => {
+    try {
+      const status = await getCloudSyncStatusFn();
+      setCloudStatus({ ...status, checked: true });
+    } catch {
+      setCloudStatus((prev) => ({ ...prev, checked: true }));
+    }
+  }, []);
 
   useEffect(() => {
-    setData(getStoredPortfolioData());
-    setIsLoaded(true);
+    let cancelled = false;
+
+    // 1. Immediate fast hydrate from localStorage if available
+    const localData = readRawLocalStorage();
+    if (localData) {
+      setData((current) => pickNewestData([current, localData]));
+    }
+
+    // 2. Fetch authoritative cloud / static portfolio data for cross-browser sync
+    (async () => {
+      const [remoteRes, staticJson] = await Promise.all([
+        getRemotePortfolioDataFn().catch(() => ({ data: null, source: "none" as const })),
+        fetchStaticPortfolioJson(),
+      ]);
+
+      if (cancelled) return;
+
+      const remoteBest = pickNewestData([remoteRes.data, staticJson]);
+      const latestLocal = readRawLocalStorage();
+
+      // If remote has newer published timestamp (or user has no local edits yet), adopt remote
+      const best =
+        latestLocal && (latestLocal.updatedAt || 0) > (remoteBest.updatedAt || 0)
+          ? latestLocal
+          : remoteBest;
+
+      setData(best);
+      if ((best.updatedAt || 0) > 0 && best === remoteBest) {
+        saveStoredPortfolioData(best);
+      }
+      setIsLoaded(true);
+    })();
 
     const handleUpdate = () => {
       setData(getStoredPortfolioData());
@@ -355,6 +212,7 @@ export function usePortfolioData() {
     window.addEventListener("storage", handleUpdate);
 
     return () => {
+      cancelled = true;
       window.removeEventListener("portfolio_data_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
@@ -363,9 +221,60 @@ export function usePortfolioData() {
   const updateData = (updater: (prev: PortfolioData) => PortfolioData) => {
     setData((current) => {
       const next = updater(current);
-      saveStoredPortfolioData(next);
-      return next;
+      const withTimestamp = { ...next, updatedAt: Date.now() };
+      saveStoredPortfolioData(withTimestamp);
+      return withTimestamp;
     });
+  };
+
+  const publishData = async (
+    nextData: PortfolioData,
+    options?: {
+      passcode?: string | undefined;
+      githubToken?: string | undefined;
+      githubRepo?: string | undefined;
+      githubBranch?: string | undefined;
+    },
+  ): Promise<SaveRemoteResult> => {
+    setIsPublishing(true);
+    const localTimestamped: PortfolioData = {
+      ...normalizePortfolioData(nextData),
+      updatedAt: Date.now(),
+    };
+    saveStoredPortfolioData(localTimestamped);
+    setData(localTimestamped);
+
+    try {
+      const savedGh = getSavedGitHubSyncConfig();
+      const result = await saveRemotePortfolioDataFn({
+        data: {
+          data: localTimestamped,
+          passcode: options?.passcode || "admin123",
+          githubToken: options?.githubToken ?? savedGh.token,
+          githubRepo: options?.githubRepo ?? savedGh.repo,
+          githubBranch: options?.githubBranch ?? savedGh.branch,
+        },
+      });
+
+      if (result.ok && result.data) {
+        saveStoredPortfolioData(result.data);
+        setData(result.data);
+      }
+      await refreshCloudStatus();
+      return result;
+    } catch (err) {
+      return {
+        ok: false,
+        backend: "none",
+        data: localTimestamped,
+        message:
+          err instanceof Error
+            ? `Saved locally, but cloud sync failed: ${err.message}`
+            : "Saved locally, but cloud sync request failed.",
+      };
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const resetData = () => {
@@ -388,10 +297,8 @@ export function usePortfolioData() {
       const parsed = JSON.parse(jsonString);
       if (!parsed || typeof parsed !== "object") return false;
       const merged: PortfolioData = {
-        ...DEFAULT_PORTFOLIO_DATA,
-        ...parsed,
-        profile: { ...DEFAULT_PORTFOLIO_DATA.profile, ...(parsed.profile || {}) },
-        about: { ...DEFAULT_PORTFOLIO_DATA.about, ...(parsed.about || {}) },
+        ...normalizePortfolioData(parsed),
+        updatedAt: Date.now(),
       };
       saveStoredPortfolioData(merged);
       setData(merged);
@@ -404,6 +311,10 @@ export function usePortfolioData() {
   return {
     data,
     updateData,
+    publishData,
+    isPublishing,
+    cloudStatus,
+    refreshCloudStatus,
     resetData,
     exportJson,
     importJson,

@@ -32,7 +32,12 @@ import {
 import { Link } from "@tanstack/react-router";
 import { z } from "zod";
 import { toast } from "sonner";
-import { usePortfolioData, type SkillCategory, type ProjectItem } from "@/lib/portfolio-data";
+import {
+  usePortfolioData,
+  type PortfolioData,
+  type SkillCategory,
+  type ProjectItem,
+} from "@/lib/portfolio-data";
 import profileCutoutImg from "@/assets/profile-cutout.png";
 import resumePdfAsset from "@/assets/Banupriya_Resume.pdf";
 
@@ -1156,8 +1161,8 @@ function ScrollTop() {
 }
 
 // ==================== MAIN PORTFOLIO COMPONENT ====================
-export function Portfolio() {
-  const { data } = usePortfolioData();
+export function Portfolio({ initialData }: { initialData?: PortfolioData | null }) {
+  const { data } = usePortfolioData(initialData);
   const { profile, about, skills, projects, experience, education, certifications, contact, footer } = data;
   const { isSpeaking, playVoice, stopVoice } = useVoiceIntro(profile);
 
