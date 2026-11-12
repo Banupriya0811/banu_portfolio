@@ -117,3 +117,4 @@ CREATE TRIGGER trg_portfolio_site_updated_at
 -- SELECT id, email FROM auth.users WHERE email = 'your-admin-email@example.com'
 -- ON CONFLICT (user_id) DO NOTHING;
 -- ============================================================================
+
