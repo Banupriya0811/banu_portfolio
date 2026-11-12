@@ -853,28 +853,18 @@ function Projects({ projects }: { projects: ProjectItem[] }) {
                 ))}
               </div>
 
-              <div className="mt-6 flex items-center gap-4 border-t border-border/60 pt-4">
-                {p.github && (
-                  <a
-                    href={p.github}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-[#7C3AED] transition-colors"
-                  >
-                    <Github size={15} /> Source Code
-                  </a>
-                )}
-                {p.demo && (
+              {p.demo && (
+                <div className="mt-6 flex items-center gap-4 border-t border-border/60 pt-4">
                   <a
                     href={p.demo}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs font-semibold hover:text-[#7C3AED] transition-colors"
                   >
                     <ExternalLink size={15} /> Live Demo
                   </a>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </Card>
         ))}
