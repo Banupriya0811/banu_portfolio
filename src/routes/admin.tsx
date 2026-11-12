@@ -298,10 +298,14 @@ function AdminPage() {
 
           {cloudStatus.checked && !isSupabaseConfigured && (
             <div className="mt-5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200">
-              <strong>Supabase not configured yet:</strong> Add{" "}
-              <code className="rounded bg-muted px-1 py-0.5">SUPABASE_URL</code> and{" "}
-              <code className="rounded bg-muted px-1 py-0.5">SUPABASE_ANON_KEY</code> in your
-              environment variables to enable cloud login &amp; publishing.
+              <strong>Supabase configuration issue:</strong>{" "}
+              {cloudStatus.diagnostic || (
+                <>
+                  Add <code className="rounded bg-muted px-1 py-0.5">SUPABASE_URL</code> and{" "}
+                  <code className="rounded bg-muted px-1 py-0.5">SUPABASE_ANON_KEY</code> in your
+                  environment variables to enable cloud login &amp; publishing.
+                </>
+              )}
             </div>
           )}
 

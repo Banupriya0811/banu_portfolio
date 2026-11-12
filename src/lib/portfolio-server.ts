@@ -20,6 +20,7 @@ export interface CloudSyncStatus {
   backend: CloudBackend;
   supabaseConfigured: boolean;
   hasPublishedRow: boolean;
+  diagnostic?: string;
 }
 
 export interface AdminSessionStatus {
@@ -41,10 +42,17 @@ export interface SaveRemoteResult {
     | "SUPABASE_ERROR";
 }
 
-interface SupabaseServerConfig {
+export interface SupabaseServerConfig {
   url: string;
   anonKey: string;
   serviceRoleKey: string;
+  keyKind: "sb_publishable" | "jwt" | "other";
+  urlHadExtraPath: boolean;
+}
+
+export interface SupabaseConfigResolution {
+  config: SupabaseServerConfig | null;
+  error?: string;
 }
 
 interface PortfolioSiteRow {
@@ -62,33 +70,139 @@ interface PortfolioSiteRow {
 }
 
 function getEnv(): Record<string, string | undefined> {
-  if (typeof process !== "undefined" && process.env) {
-    return process.env;
-  }
-  return {};
+  const processEnv = typeof process !== "undefined" && process.env ? process.env : {};
+  const globalEnv =
+    typeof globalThis !== "undefined" &&
+    (globalThis as { __env__?: Record<string, string | undefined> }).__env__
+      ? (globalThis as { __env__?: Record<string, string | undefined> }).__env__!
+      : {};
+  return { ...globalEnv, ...processEnv };
 }
 
-function getSupabaseServerConfig(): SupabaseServerConfig | null {
-  const env = getEnv();
-  const url = (
-    env["SUPABASE_URL"] ||
-    env["NEXT_PUBLIC_SUPABASE_URL"] ||
-    env["VITE_SUPABASE_URL"] ||
-    ""
-  )
-    .trim()
-    .replace(/\/+$/, "");
-  const anonKey = (
-    env["SUPABASE_ANON_KEY"] ||
-    env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
-    env["VITE_SUPABASE_ANON_KEY"] ||
-    ""
-  ).trim();
-  // Strictly server-only env var for service role key (never read from VITE_*)
-  const serviceRoleKey = (env["SUPABASE_SERVICE_ROLE_KEY"] || "").trim();
+function stripQuotesAndWhitespace(value: string | undefined): string {
+  if (!value) return "";
+  let cleaned = value.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
 
-  if (!url || !anonKey) return null;
-  return { url, anonKey, serviceRoleKey };
+export function classifySupabaseKey(key: string): "sb_publishable" | "jwt" | "other" {
+  if (key.startsWith("sb_publishable_") || key.startsWith("sb_secret_")) {
+    return "sb_publishable";
+  }
+  if (key.split(".").length === 3 && key.startsWith("eyJ")) {
+    return "jwt";
+  }
+  return "other";
+}
+
+export function isNonJwtSupabaseKey(key: string): boolean {
+  return key.startsWith("sb_publishable_") || key.startsWith("sb_secret_");
+}
+
+function logSupabaseDiagnostic(
+  level: "info" | "warn" | "error",
+  event: string,
+  meta: Record<string, unknown>,
+) {
+  const logger = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+  logger(`[supabase:${event}]`, JSON.stringify(meta));
+}
+
+export function resolveSupabaseServerConfig(
+  env: Record<string, string | undefined> = getEnv(),
+): SupabaseConfigResolution {
+  const rawUrl = stripQuotesAndWhitespace(
+    env["SUPABASE_URL"] ||
+      env["NEXT_PUBLIC_SUPABASE_URL"] ||
+      env["VITE_SUPABASE_URL"],
+  );
+  const rawAnonKey = stripQuotesAndWhitespace(
+    env["SUPABASE_ANON_KEY"] ||
+      env["SUPABASE_PUBLISHABLE_KEY"] ||
+      env["NEXT_PUBLIC_SUPABASE_ANON_KEY"] ||
+      env["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY"] ||
+      env["VITE_SUPABASE_ANON_KEY"],
+  );
+  // Strictly server-only env var for service role key (never read from VITE_*)
+  const serviceRoleKey = stripQuotesAndWhitespace(env["SUPABASE_SERVICE_ROLE_KEY"]);
+
+  if (!rawUrl || !rawAnonKey) {
+    return {
+      config: null,
+      error: "Supabase environment variables (SUPABASE_URL, SUPABASE_ANON_KEY) are not configured.",
+    };
+  }
+
+  // Catch swapped URL and key
+  if (rawUrl.startsWith("eyJ") || rawUrl.startsWith("sb_") || /^https?:\/\//i.test(rawAnonKey)) {
+    logSupabaseDiagnostic("error", "config_swapped", {
+      urlLooksLikeKey: rawUrl.startsWith("eyJ") || rawUrl.startsWith("sb_"),
+      keyLooksLikeUrl: /^https?:\/\//i.test(rawAnonKey),
+    });
+    return {
+      config: null,
+      error:
+        "SUPABASE_URL and SUPABASE_ANON_KEY appear to be swapped or malformed in your environment variables.",
+    };
+  }
+
+  const candidateUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidateUrl);
+  } catch {
+    logSupabaseDiagnostic("error", "config_invalid_url", { hasUrl: true });
+    return {
+      config: null,
+      error: "SUPABASE_URL is malformed. Expected format: https://<project-ref>.supabase.co",
+    };
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return {
+      config: null,
+      error: "SUPABASE_URL must use http:// or https://.",
+    };
+  }
+
+  if (parsed.hostname === "supabase.com" && parsed.pathname.includes("/dashboard/project/")) {
+    logSupabaseDiagnostic("error", "config_dashboard_url", { host: parsed.host });
+    return {
+      config: null,
+      error:
+        "SUPABASE_URL is set to your Supabase Dashboard URL instead of your Project API URL (https://<project-ref>.supabase.co).",
+    };
+  }
+
+  // Normalize to clean origin so extra subpaths (e.g. /rest/v1 or /auth/v1) never duplicate in SDK URLs
+  const cleanPathname = parsed.pathname.replace(/\/+$/, "");
+  const urlHadExtraPath = Boolean(cleanPathname && cleanPathname !== "/");
+  const normalizedUrl = parsed.origin;
+  const keyKind = classifySupabaseKey(rawAnonKey);
+
+  if (urlHadExtraPath) {
+    logSupabaseDiagnostic("warn", "url_path_normalized", {
+      host: parsed.host,
+      strippedPath: cleanPathname,
+      keyKind,
+    });
+  }
+
+  return {
+    config: {
+      url: normalizedUrl,
+      anonKey: rawAnonKey,
+      serviceRoleKey,
+      keyKind,
+      urlHadExtraPath,
+    },
+  };
 }
 
 function isLocalDevServer(env: Record<string, string | undefined>): boolean {
@@ -100,8 +214,47 @@ function isLocalDevServer(env: Record<string, string | undefined>): boolean {
   );
 }
 
-function noStoreFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, { ...init, cache: "no-store" });
+/**
+ * Custom fetch wrapper for Supabase requests:
+ * 1. Bypasses stale runtime fetch caching (`cache: "no-store"`) safely across Node and Edge runtimes.
+ * 2. Strips `Authorization: Bearer <sb_publishable_...>` injected by `@supabase/supabase-js` AuthClient
+ *    for non-JWT publishable keys, keeping `apikey` intact and preserving real user session JWTs.
+ */
+export function createSafeSupabaseFetch(
+  apiKey: string,
+  baseFetch: typeof fetch = fetch,
+): typeof fetch {
+  const nonJwtKey = isNonJwtSupabaseKey(apiKey);
+
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers);
+    if (nonJwtKey) {
+      const authHeader = headers.get("Authorization");
+      if (authHeader && authHeader === `Bearer ${apiKey}`) {
+        headers.delete("Authorization");
+      }
+    }
+
+    const requestInit: RequestInit = {
+      ...init,
+      headers,
+      cache: "no-store",
+    };
+
+    try {
+      return await baseFetch(input, requestInit);
+    } catch (err) {
+      // Some edge runtimes (e.g. Cloudflare Workers) reject `cache: "no-store"` in RequestInit
+      if (
+        err instanceof TypeError &&
+        err.message.toLowerCase().includes("cache")
+      ) {
+        const { cache: _ignored, ...fallbackInit } = requestInit;
+        return baseFetch(input, fallbackInit);
+      }
+      throw err;
+    }
+  };
 }
 
 function createAnonSupabaseClient(config: SupabaseServerConfig): SupabaseClient {
@@ -112,7 +265,7 @@ function createAnonSupabaseClient(config: SupabaseServerConfig): SupabaseClient 
       detectSessionInUrl: false,
     },
     global: {
-      fetch: noStoreFetch,
+      fetch: createSafeSupabaseFetch(config.anonKey),
     },
   });
 }
@@ -128,7 +281,7 @@ function createAuthedSupabaseClient(
       detectSessionInUrl: false,
     },
     global: {
-      fetch: noStoreFetch,
+      fetch: createSafeSupabaseFetch(config.anonKey),
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -193,11 +346,19 @@ async function verifyUserIsAdmin(
     return true;
   }
 
+  if (error) {
+    logSupabaseDiagnostic("warn", "admin_table_check_failed", {
+      host: new URL(config.url).host,
+      code: error.code,
+      message: error.message,
+    });
+  }
+
   // Fallback check via service-role if RLS read on admin_users wasn't configured
   if (config.serviceRoleKey) {
     const serviceClient = createClient(config.url, config.serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: { fetch: noStoreFetch },
+      global: { fetch: createSafeSupabaseFetch(config.serviceRoleKey) },
     });
     const { data: svcData } = await serviceClient
       .from(ADMIN_TABLE)
@@ -282,15 +443,17 @@ async function readLocalDevFile(): Promise<PortfolioData | null> {
 export const getCloudSyncStatusFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<CloudSyncStatus> => {
     const env = getEnv();
-    const config = getSupabaseServerConfig();
-    if (!config) {
+    const resolved = resolveSupabaseServerConfig(env);
+    if (!resolved.config) {
       return {
         backend: isLocalDevServer(env) ? "local" : "none",
         supabaseConfigured: false,
         hasPublishedRow: false,
+        ...(resolved.error ? { diagnostic: resolved.error } : {}),
       };
     }
 
+    const config = resolved.config;
     try {
       const supabase = createAnonSupabaseClient(config);
       const { data, error } = await supabase
@@ -306,16 +469,26 @@ export const getCloudSyncStatusFn = createServerFn({ method: "GET" }).handler(
           hasPublishedRow: true,
         };
       }
+      if (error) {
+        logSupabaseDiagnostic("warn", "status_query_error", {
+          host: new URL(config.url).host,
+          keyKind: config.keyKind,
+          code: error.code,
+          message: error.message,
+        });
+      }
       return {
         backend: "supabase-empty",
         supabaseConfigured: true,
         hasPublishedRow: false,
+        ...(error ? { diagnostic: error.message } : {}),
       };
-    } catch {
+    } catch (err) {
       return {
         backend: "supabase-empty",
         supabaseConfigured: true,
         hasPublishedRow: false,
+        diagnostic: err instanceof Error ? err.message : "Failed to reach Supabase",
       };
     }
   },
@@ -324,7 +497,7 @@ export const getCloudSyncStatusFn = createServerFn({ method: "GET" }).handler(
 export const getRemotePortfolioDataFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ data: PortfolioData | null; source: CloudBackend }> => {
     const env = getEnv();
-    const config = getSupabaseServerConfig();
+    const { config } = resolveSupabaseServerConfig(env);
 
     if (config) {
       try {
@@ -343,8 +516,20 @@ export const getRemotePortfolioDataFn = createServerFn({ method: "GET" }).handle
             source: "supabase",
           };
         }
+        if (error) {
+          logSupabaseDiagnostic("warn", "public_read_error", {
+            host: new URL(config.url).host,
+            keyKind: config.keyKind,
+            code: error.code,
+            message: error.message,
+          });
+        }
         return { data: null, source: "supabase-empty" };
-      } catch {
+      } catch (err) {
+        logSupabaseDiagnostic("error", "public_read_exception", {
+          host: new URL(config.url).host,
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
         return { data: null, source: "supabase-empty" };
       }
     }
@@ -360,17 +545,17 @@ export const getRemotePortfolioDataFn = createServerFn({ method: "GET" }).handle
 
 export const getAdminSessionFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<AdminSessionStatus> => {
-    const config = getSupabaseServerConfig();
-    if (!config) {
+    const resolved = resolveSupabaseServerConfig();
+    if (!resolved.config) {
       return {
         authenticated: false,
         email: null,
         supabaseConfigured: false,
-        reason: "Supabase environment variables (SUPABASE_URL, SUPABASE_ANON_KEY) are not configured.",
+        reason: resolved.error || "Supabase environment variables are not configured.",
       };
     }
 
-    const session = await resolveAuthenticatedAdmin(config);
+    const session = await resolveAuthenticatedAdmin(resolved.config);
     return {
       authenticated: session.ok,
       email: session.email ?? null,
@@ -386,20 +571,29 @@ export const adminLoginFn = createServerFn({ method: "POST" })
     async ({
       data,
     }): Promise<{ ok: boolean; email?: string | null; message: string }> => {
-      const config = getSupabaseServerConfig();
-      if (!config) {
+      const resolved = resolveSupabaseServerConfig();
+      if (!resolved.config) {
         return {
           ok: false,
           message:
+            resolved.error ||
             "Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY to your environment variables.",
         };
       }
 
+      const config = resolved.config;
       const email = (data?.email || "").trim();
       const password = data?.password || "";
       if (!email || !password) {
         return { ok: false, message: "Please enter both email and password." };
       }
+
+      const host = new URL(config.url).host;
+      logSupabaseDiagnostic("info", "admin_login_attempt", {
+        host,
+        keyKind: config.keyKind,
+        urlHadExtraPath: config.urlHadExtraPath,
+      });
 
       const supabase = createAnonSupabaseClient(config);
       const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -408,9 +602,23 @@ export const adminLoginFn = createServerFn({ method: "POST" })
       });
 
       if (error || !authData.session || !authData.user) {
+        logSupabaseDiagnostic("error", "admin_login_failed", {
+          host,
+          keyKind: config.keyKind,
+          status: error?.status ?? null,
+          code: error?.code ?? null,
+          message: error?.message ?? "Missing session or user",
+        });
+
+        const rawMessage = error?.message || "Invalid email or password.";
+        const hint =
+          rawMessage.toLowerCase().includes("invalid path specified")
+            ? " (Check that SUPABASE_URL is your root project URL https://<project-ref>.supabase.co with no extra path segments.)"
+            : "";
+
         return {
           ok: false,
-          message: error?.message || "Invalid email or password.",
+          message: `${rawMessage}${hint}`,
         };
       }
 
@@ -422,6 +630,7 @@ export const adminLoginFn = createServerFn({ method: "POST" })
 
       if (!isAdmin) {
         clearAuthCookies();
+        logSupabaseDiagnostic("warn", "admin_login_not_in_allowlist", { host });
         return {
           ok: false,
           message:
@@ -430,6 +639,7 @@ export const adminLoginFn = createServerFn({ method: "POST" })
       }
 
       writeAuthCookies(authData.session.access_token, authData.session.refresh_token);
+      logSupabaseDiagnostic("info", "admin_login_success", { host });
 
       return {
         ok: true,
@@ -447,11 +657,12 @@ export const adminLogoutFn = createServerFn({ method: "POST" }).handler(async ()
 export const updateAdminPasswordFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input as { newPassword: string })
   .handler(async ({ data }): Promise<{ ok: boolean; message: string }> => {
-    const config = getSupabaseServerConfig();
-    if (!config) {
-      return { ok: false, message: "Supabase is not configured." };
+    const resolved = resolveSupabaseServerConfig();
+    if (!resolved.config) {
+      return { ok: false, message: resolved.error || "Supabase is not configured." };
     }
 
+    const config = resolved.config;
     const newPassword = (data?.newPassword || "").trim();
     if (newPassword.length < 8) {
       return { ok: false, message: "Password must be at least 8 characters long." };
@@ -462,7 +673,7 @@ export const updateAdminPasswordFn = createServerFn({ method: "POST" })
       return { ok: false, message: admin.reason || "Unauthorized." };
     }
 
-    const res = await fetch(`${config.url}/auth/v1/user`, {
+    const res = await createSafeSupabaseFetch(config.anonKey)(`${config.url}/auth/v1/user`, {
       method: "PUT",
       headers: {
         apikey: config.anonKey,
@@ -486,17 +697,19 @@ export const updateAdminPasswordFn = createServerFn({ method: "POST" })
 export const saveRemotePortfolioDataFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input as { data: PortfolioData })
   .handler(async ({ data: input }): Promise<SaveRemoteResult> => {
-    const config = getSupabaseServerConfig();
-    if (!config) {
+    const resolved = resolveSupabaseServerConfig();
+    if (!resolved.config) {
       return {
         ok: false,
         backend: "none",
         reason: "SUPABASE_NOT_CONFIGURED",
         message:
+          resolved.error ||
           "Supabase is not configured on the server. Add SUPABASE_URL and SUPABASE_ANON_KEY to Vercel Environment Variables.",
       };
     }
 
+    const config = resolved.config;
     const admin = await resolveAuthenticatedAdmin(config);
     if (!admin.ok || !admin.accessToken || !admin.userId) {
       return {
@@ -525,7 +738,6 @@ export const saveRemotePortfolioDataFn = createServerFn({ method: "POST" })
       updated_by: admin.userId,
     };
 
-    // Execute write with the authenticated admin's JWT so PostgreSQL RLS policies enforce authorization
     const authedClient = createAuthedSupabaseClient(config, admin.accessToken);
     const { data: savedRow, error } = await authedClient
       .from(PORTFOLIO_TABLE)
@@ -536,6 +748,11 @@ export const saveRemotePortfolioDataFn = createServerFn({ method: "POST" })
       .single();
 
     if (error || !savedRow) {
+      logSupabaseDiagnostic("error", "portfolio_upsert_failed", {
+        host: new URL(config.url).host,
+        code: error?.code ?? null,
+        message: error?.message ?? "No saved row returned",
+      });
       const isRls =
         error?.code === "42501" ||
         error?.message?.toLowerCase().includes("row-level security") ||
@@ -550,6 +767,9 @@ export const saveRemotePortfolioDataFn = createServerFn({ method: "POST" })
       };
     }
 
+    logSupabaseDiagnostic("info", "portfolio_upsert_success", {
+      host: new URL(config.url).host,
+    });
     const mapped = mapRowToPortfolioData(savedRow as PortfolioSiteRow);
     return {
       ok: true,
